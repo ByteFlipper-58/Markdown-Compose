@@ -1,5 +1,4 @@
 
-```markdown
 # Markdown Compose Lib
 
 Markdown Compose Lib — это библиотека для отображения и рендеринга Markdown-текста в Jetpack Compose. Она позволяет легко интегрировать поддержку Markdown в Android-приложения, поддерживая заголовки, списки, ссылки, жирный и курсивный текст.
@@ -11,16 +10,6 @@ Markdown Compose Lib — это библиотека для отображени
 - Списки (пунктовые)
 - Ссылки
 - Жирный и курсивный текст
-
-## Установка
-
-Для использования библиотеки в вашем проекте добавьте в ваш `build.gradle`:
-
-```gradle
-dependencies {
-    implementation 'com.byteflipper:markdown-compose:<latest_version>'
-}
-```
 
 ## Пример использования
 
