@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -52,15 +53,24 @@ object MarkdownRenderer {
             }
 
             is BoldTextNode -> {
-                // Explicitly use a bold font weight
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = textColor)) {
+                withStyle(
+                    SpanStyle(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = textColor
+                    )
+                ) {
                     append(node.text)
                 }
             }
 
             is ItalicTextNode -> {
-                // Explicitly use italic font style
-                withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = textColor)) {
+                withStyle(
+                    SpanStyle(
+                        fontStyle = FontStyle.Italic,
+                        fontFamily = FontFamily.Serif,
+                        color = textColor
+                    )
+                ) {
                     append(node.text)
                 }
             }

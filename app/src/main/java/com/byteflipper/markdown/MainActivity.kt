@@ -49,7 +49,7 @@ fun MainScreen() {
 
             MarkdownText(
                 text = """
-                    # **Привет, Мир!**
+                    # **Привет, Мир!** No Bold
                     ## *Это Markdown*
                     - ✅ Поддержка заголовков
                     - ✅ Списков
@@ -59,6 +59,7 @@ fun MainScreen() {
                     **Жирдяй**
                     
                     *Курсив*
+                    
                     
                     ```
                     print("log");
