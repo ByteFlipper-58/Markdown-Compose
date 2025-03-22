@@ -29,12 +29,27 @@ object MarkdownRenderer {
                         1 -> 24.sp
                         2 -> 20.sp
                         3 -> 18.sp
-                        else -> 16.sp
+                        4 -> 16.sp
+                        else -> 14.sp
                     },
                     fontWeight = FontWeight.Bold,
                     color = textColor
                 )) {
                     // Render the header content
+                    for (contentNode in node.content) {
+                        renderNode(contentNode, textColor)
+                    }
+                    append("\n")
+                }
+            }
+
+            is BlockQuoteNode -> {
+                withStyle(SpanStyle(
+                    color = textColor.copy(alpha = 0.7f),
+                    fontStyle = FontStyle.Italic,
+                    background = Color.LightGray.copy(alpha = 0.2f)
+                )) {
+                    append("│ ")
                     for (contentNode in node.content) {
                         renderNode(contentNode, textColor)
                     }
@@ -75,6 +90,17 @@ object MarkdownRenderer {
                 }
             }
 
+            is StrikethroughTextNode -> {
+                withStyle(
+                    SpanStyle(
+                        textDecoration = TextDecoration.LineThrough,
+                        color = textColor
+                    )
+                ) {
+                    append(node.text)
+                }
+            }
+
             is TextNode -> {
                 withStyle(SpanStyle(color = textColor)) {
                     append(node.text)
@@ -98,7 +124,7 @@ object MarkdownRenderer {
 
             is CodeNode -> {
                 withStyle(SpanStyle(
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontFamily = FontFamily.Monospace,
                     background = Color.LightGray.copy(alpha = 0.3f)
                 )) {
                     append(node.code)

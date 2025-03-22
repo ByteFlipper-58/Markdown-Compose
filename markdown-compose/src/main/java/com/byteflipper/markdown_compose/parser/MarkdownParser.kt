@@ -24,6 +24,14 @@ object MarkdownParser {
                         val content = parseInlineFormatting(line.removePrefix("### "))
                         nodes.add(HeaderNode(content, level = 3))
                     }
+                    line.startsWith("#### ") -> {
+                        val content = parseInlineFormatting(line.removePrefix("#### "))
+                        nodes.add(HeaderNode(content, level = 4))
+                    }
+                    line.startsWith("> ") -> {
+                        val content = parseInlineFormatting(line.removePrefix("> "))
+                        nodes.add(BlockQuoteNode(content))
+                    }
                     line.startsWith("- ") -> {
                         val content = parseInlineFormatting(line.removePrefix("- "))
                         nodes.add(ListItemNode(content))
@@ -67,8 +75,32 @@ object MarkdownParser {
                 }
             }
 
-            // Handle bold text (**text**)
+            // Handle strikethrough text (~~text~~)
             if (currentIndex + 1 < length &&
+                text[currentIndex] == '~' &&
+                text[currentIndex + 1] == '~') {
+
+                // Add any accumulated text before the formatting
+                if (currentText.isNotEmpty()) {
+                    nodes.add(TextNode(currentText.toString()))
+                    currentText = StringBuilder()
+                }
+
+                val strikeStart = currentIndex + 2
+                val strikeEnd = findClosingTag(text, strikeStart, "~~")
+
+                if (strikeEnd != -1) {
+                    val strikeText = text.substring(strikeStart, strikeEnd)
+                    nodes.add(StrikethroughTextNode(strikeText))
+                    currentIndex = strikeEnd + 2 // Skip past the closing ~~
+                } else {
+                    // If no closing tag is found, treat it as regular text
+                    currentText.append("~~")
+                    currentIndex += 2
+                }
+            }
+            // Handle bold text (**text**)
+            else if (currentIndex + 1 < length &&
                 text[currentIndex] == '*' &&
                 text[currentIndex + 1] == '*') {
 
