@@ -54,6 +54,18 @@ object InlineParser {
                         continue
                     }
                 }
+                
+                // ~~Strikethrough~~
+                text.startsWith("~~", currentIndex) -> {
+                    flushText(currentText, nodes)
+                    val end = findClosingTag(text, currentIndex + 2, "~~")
+                    if (end != -1) {
+                        nodes.add(StrikethroughTextNode(text.substring(currentIndex + 2, end)))
+                        Log.d(TAG, "Добавлен StrikethroughTextNode: ${text.substring(currentIndex + 2, end)}")
+                        currentIndex = end + 2
+                        continue
+                    }
+                }
 
                 else -> {
                     currentText.append(text[currentIndex])
