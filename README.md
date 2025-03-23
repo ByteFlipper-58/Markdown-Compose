@@ -47,4 +47,3 @@ Markdown Compose Lib — это библиотека для отображени
 4. Закоммитьте изменения (`git commit -m 'Add feature'`)
 5. Отправьте в свой форк (`git push origin feature-branch`)
 6. Откройте пулл-реквест в этом репозитории
-```
