@@ -6,6 +6,7 @@ data class HeaderNode(val content: List<MarkdownNode>, val level: Int) : Markdow
 data class ListItemNode(val content: List<MarkdownNode>) : MarkdownNode
 data class BlockQuoteNode(val content: List<MarkdownNode>) : MarkdownNode
 object LineBreakNode : MarkdownNode
+object HorizontalRuleNode : MarkdownNode
 
 data class BoldTextNode(val text: String) : MarkdownNode
 data class ItalicTextNode(val text: String) : MarkdownNode

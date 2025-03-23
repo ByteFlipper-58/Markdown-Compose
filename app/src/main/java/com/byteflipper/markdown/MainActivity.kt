@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.byteflipper.markdown.ui.theme.MarkdownComposeSampleTheme
+import com.byteflipper.markdown_compose.MarkdownText
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,7 +93,21 @@ fun MainScreen() {
                     | Left     | Center   | Right    |
                     | **Bold** | *Italic* | Regular  |
                     
+                    # Horizontal Rule Test
+        
+                    Text before rule
+        
                     ---
+        
+                    Text between rules
+        
+                    ***
+        
+                    More text
+        
+                    ___
+        
+                    End of test
                 """.trimIndent(),
                 modifier = Modifier.fillMaxWidth(),
                 textColor = textColor

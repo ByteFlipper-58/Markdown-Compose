@@ -53,6 +53,9 @@ object MarkdownRenderer {
             is CodeNode -> Code.render(builder, node)
             is LineBreakNode -> builder.append("\n")
             is TextNode -> Text.render(builder, node, textColor)
+            is HorizontalRuleNode -> {
+                // Do nothing here as it's rendered directly in MarkdownText
+            }
 
             // Tables are not directly rendered through AnnotatedString
             // They are handled by a separate component.

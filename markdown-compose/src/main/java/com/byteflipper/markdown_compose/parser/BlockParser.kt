@@ -1,6 +1,8 @@
 package com.byteflipper.markdown_compose.parser
 
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.byteflipper.markdown_compose.model.*
 
 private const val TAG = "UpdatedBlockParser"
@@ -16,6 +18,7 @@ object BlockParser {
      * @param input The Markdown text to parse.
      * @return A list of parsed MarkdownNode elements.
      */
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun parseBlocks(input: String): List<MarkdownNode> {
         val nodes = mutableListOf<MarkdownNode>()
         val lines = input.lines()
@@ -94,6 +97,13 @@ object BlockParser {
                     val inlineNodes = InlineParser.parseInline(content)
                     nodes.add(ListItemNode(inlineNodes))
                     Log.d(TAG, "Added ListItemNode with bullet: $content")
+                }
+                line.matches(Regex("^(---|\\*\\*\\*|___)\\s*$")) -> {
+                    if (nodes.lastOrNull() is LineBreakNode) {
+                        nodes.removeLast()
+                    }
+                    nodes.add(HorizontalRuleNode)
+                    Log.d(TAG, "Added HorizontalRuleNode from: $line")
                 }
                 else -> {
                     if (line.startsWith("```") && line.endsWith("```") && line.length > 6) {

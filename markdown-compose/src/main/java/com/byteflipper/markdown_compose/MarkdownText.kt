@@ -16,6 +16,7 @@ import com.byteflipper.markdown_compose.model.*
 import com.byteflipper.markdown_compose.parser.MarkdownParser
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 import com.byteflipper.markdown_compose.renderer.builders.Table
+import com.byteflipper.markdown_compose.renderer.canvas.HorizontalRule
 
 /**
  * A Composable function to display Markdown content as a rendered text block in Jetpack Compose.
@@ -75,6 +76,19 @@ fun MarkdownText(
                     )
 
                     // Add spacing after the table
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                is HorizontalRuleNode -> {
+                    // Before rendering a horizontal rule, render any accumulated text nodes
+                    renderTextNodes()
+
+                    // Add spacing before the rule
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Render the horizontal rule
+                    HorizontalRule.Render(color = textColor)
+
+                    // Add spacing after the rule
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 else -> {

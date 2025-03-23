@@ -32,7 +32,7 @@ object Table {
      */
     @Composable
     fun RenderTable(tableNode: TableNode, textColor: Color, modifier: Modifier = Modifier) {
-        Log.d(TAG, "Начинаем рендеринг таблицы")
+        Log.d(TAG, "Start rendering table")
 
         val textMeasurer = rememberTextMeasurer()
         val density = LocalDensity.current
