@@ -13,3 +13,25 @@ data class StrikethroughTextNode(val text: String) : MarkdownNode
 data class TextNode(val text: String) : MarkdownNode
 data class LinkNode(val text: String, val url: String) : MarkdownNode
 data class CodeNode(val code: String) : MarkdownNode
+
+enum class ColumnAlignment {
+    LEFT,
+    RIGHT,
+    CENTER
+}
+
+data class TableCellNode(
+    val content: List<MarkdownNode>,
+    val columnIndex: Int
+) : MarkdownNode
+
+data class TableRowNode(
+    val cells: List<TableCellNode>,
+    val isHeader: Boolean = false
+) : MarkdownNode
+
+data class TableNode(
+    val rows: List<TableRowNode>,
+    val columnAlignments: List<ColumnAlignment>,
+    val columnWidths: List<Float> = emptyList()
+) : MarkdownNode

@@ -7,7 +7,7 @@ import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.ListItemNode
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 
-object ListItemRenderer {
+object ListItem {
     fun render(builder: AnnotatedString.Builder, node: ListItemNode, textColor: Color) {
         with(builder) {
             withStyle(SpanStyle(color = textColor)) {

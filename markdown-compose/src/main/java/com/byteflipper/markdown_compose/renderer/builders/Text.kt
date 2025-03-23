@@ -6,7 +6,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.TextNode
 
-object TextRenderer {
+object Text {
     fun render(builder: AnnotatedString.Builder, node: TextNode, textColor: Color) {
         builder.withStyle(
             SpanStyle(color = textColor)

@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.BoldTextNode
 
-object BoldRenderer {
+object Bold {
     fun render(builder: AnnotatedString.Builder, node: BoldTextNode, textColor: Color) {
         builder.withStyle(SpanStyle(
             fontWeight = FontWeight.ExtraBold,

@@ -8,7 +8,7 @@ import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.BlockQuoteNode
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 
-object BlockQuoteRenderer {
+object BlockQuote {
     fun render(builder: AnnotatedString.Builder, node: BlockQuoteNode, textColor: Color) {
         with(builder) {
             withStyle(

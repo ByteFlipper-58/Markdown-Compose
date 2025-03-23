@@ -7,12 +7,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.LinkNode
 
-object LinkRenderer {
+object Link {
     fun render(builder: AnnotatedString.Builder, node: LinkNode) {
         builder.pushStringAnnotation(tag = "URL", annotation = node.url)
         builder.withStyle(
             SpanStyle(
-                color = Color.Blue, // Делаем текст синим
+                color = Color.Blue,
                 textDecoration = TextDecoration.Underline
             )
         ) {

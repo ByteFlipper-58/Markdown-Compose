@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.sp
 import com.byteflipper.markdown_compose.model.HeaderNode
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 
-object HeaderRenderer {
+object Header {
     fun render(builder: AnnotatedString.Builder, node: HeaderNode, textColor: Color) {
         builder.withStyle(
             SpanStyle(

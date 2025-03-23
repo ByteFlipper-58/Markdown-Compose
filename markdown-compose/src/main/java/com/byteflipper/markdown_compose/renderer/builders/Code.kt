@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.CodeNode
 
-object CodeRenderer {
+object Code {
     fun render(builder: AnnotatedString.Builder, node: CodeNode) {
         builder.withStyle(
             SpanStyle(

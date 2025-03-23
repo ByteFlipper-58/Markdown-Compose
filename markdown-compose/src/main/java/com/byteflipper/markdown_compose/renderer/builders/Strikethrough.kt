@@ -3,17 +3,15 @@ package com.byteflipper.markdown_compose.renderer.builders
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
-import com.byteflipper.markdown_compose.model.ItalicTextNode
+import com.byteflipper.markdown_compose.model.StrikethroughTextNode
 
-object ItalicRenderer {
-    fun render(builder: AnnotatedString.Builder, node: ItalicTextNode, textColor: Color) {
+object Strikethrough {
+    fun render(builder: AnnotatedString.Builder, node: StrikethroughTextNode, textColor: Color) {
         builder.withStyle(
             SpanStyle(
-                fontStyle = FontStyle.Italic,
-                fontFamily = FontFamily.Serif,
+                textDecoration = TextDecoration.LineThrough,
                 color = textColor
             )
         ) {

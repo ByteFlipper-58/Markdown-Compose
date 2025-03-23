@@ -5,7 +5,13 @@ import com.byteflipper.markdown_compose.model.*
 
 private const val TAG = "InlineParser"
 
+/**
+ * Object responsible for parsing inline Markdown elements such as links, bold, italic, and strikethrough text.
+ */
 object InlineParser {
+    /**
+     * Parses inline Markdown elements within a given text string and returns a list of MarkdownNode objects.
+     */
     fun parseInline(text: String): List<MarkdownNode> {
         val nodes = mutableListOf<MarkdownNode>()
         var currentIndex = 0
@@ -14,7 +20,7 @@ object InlineParser {
 
         while (currentIndex < length) {
             when {
-                // Ссылки [Текст](URL)
+                // Detects links [Text](URL)
                 text.startsWith("[", currentIndex) -> {
                     val linkTextEnd = text.indexOf(']', currentIndex)
                     if (linkTextEnd != -1 && linkTextEnd + 1 < length && text[linkTextEnd + 1] == '(') {
@@ -24,44 +30,44 @@ object InlineParser {
                             val linkText = text.substring(currentIndex + 1, linkTextEnd)
                             val linkUrl = text.substring(linkTextEnd + 2, linkUrlEnd)
                             nodes.add(LinkNode(linkText, linkUrl))
-                            Log.d(TAG, "Добавлена ссылка: $linkText -> $linkUrl")
+                            Log.d(TAG, "Added LinkNode: $linkText -> $linkUrl")
                             currentIndex = linkUrlEnd + 1
                             continue
                         }
                     }
                 }
 
-                // **Жирный текст**
+                // Detects **bold text**
                 text.startsWith("**", currentIndex) -> {
                     flushText(currentText, nodes)
                     val end = findClosingTag(text, currentIndex + 2, "**")
                     if (end != -1) {
                         nodes.add(BoldTextNode(text.substring(currentIndex + 2, end)))
-                        Log.d(TAG, "Добавлен BoldTextNode: ${text.substring(currentIndex + 2, end)}")
+                        Log.d(TAG, "Added BoldTextNode: ${text.substring(currentIndex + 2, end)}")
                         currentIndex = end + 2
                         continue
                     }
                 }
 
-                // *Курсив*
+                // Detects *italic text*
                 text.startsWith("*", currentIndex) -> {
                     flushText(currentText, nodes)
                     val end = findClosingTag(text, currentIndex + 1, "*")
                     if (end != -1) {
                         nodes.add(ItalicTextNode(text.substring(currentIndex + 1, end)))
-                        Log.d(TAG, "Добавлен ItalicTextNode: ${text.substring(currentIndex + 1, end)}")
+                        Log.d(TAG, "Added ItalicTextNode: ${text.substring(currentIndex + 1, end)}")
                         currentIndex = end + 1
                         continue
                     }
                 }
-                
-                // ~~Strikethrough~~
+
+                // Detects ~~strikethrough text~~
                 text.startsWith("~~", currentIndex) -> {
                     flushText(currentText, nodes)
                     val end = findClosingTag(text, currentIndex + 2, "~~")
                     if (end != -1) {
                         nodes.add(StrikethroughTextNode(text.substring(currentIndex + 2, end)))
-                        Log.d(TAG, "Добавлен StrikethroughTextNode: ${text.substring(currentIndex + 2, end)}")
+                        Log.d(TAG, "Added StrikethroughTextNode: ${text.substring(currentIndex + 2, end)}")
                         currentIndex = end + 2
                         continue
                     }
@@ -78,14 +84,20 @@ object InlineParser {
         return nodes
     }
 
+    /**
+     * Flushes any accumulated text and adds it as a TextNode to the list.
+     */
     private fun flushText(currentText: StringBuilder, nodes: MutableList<MarkdownNode>) {
         if (currentText.isNotEmpty()) {
             nodes.add(TextNode(currentText.toString()))
-            Log.d(TAG, "Добавлен TextNode: ${currentText.toString()}")
+            Log.d(TAG, "Added TextNode: ${currentText.toString()}")
             currentText.clear()
         }
     }
 
+    /**
+     * Finds the closing tag for inline elements like **bold**, *italic*, or ~~strikethrough~~.
+     */
     private fun findClosingTag(text: String, startIndex: Int, tag: String): Int {
         var i = startIndex
         while (i <= text.length - tag.length) {
