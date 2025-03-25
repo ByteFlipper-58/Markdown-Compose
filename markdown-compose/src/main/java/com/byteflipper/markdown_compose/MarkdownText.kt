@@ -1,9 +1,6 @@
 package com.byteflipper.markdown_compose
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,14 +15,17 @@ import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 import com.byteflipper.markdown_compose.renderer.builders.Table
 import com.byteflipper.markdown_compose.renderer.canvas.HorizontalRule
 
+// Default spacing values for block elements
+private val DefaultBlockSpacing = 8.dp
+private val HeaderBottomSpacing = 4.dp
+
 /**
- * A Composable function to display Markdown content as a rendered text block in Jetpack Compose.
- * It handles parsing the Markdown, rendering text nodes, and rendering tables separately.
+ * Composable function to render Markdown content as Jetpack Compose UI components.
  *
  * @param markdown The Markdown string to be rendered.
- * @param modifier The Modifier to be applied to the Column that holds the content.
- * @param textColor The color of the text. Default is `Color.Unspecified`.
- * @param style The text style to be applied to the rendered text. Default is `MaterialTheme.typography.bodyMedium`.
+ * @param modifier Modifier for layout adjustments.
+ * @param textColor Default text color, can be overridden.
+ * @param style Text style applied to Markdown elements.
  */
 @Composable
 fun MarkdownText(
@@ -34,71 +34,100 @@ fun MarkdownText(
     textColor: Color = Color.Unspecified,
     style: TextStyle = MaterialTheme.typography.bodyMedium
 ) {
-    // Parse the Markdown string into a list of Markdown nodes (elements)
     val nodes = remember(markdown) { MarkdownParser.parse(markdown) }
 
-    // Column that will hold the Markdown content
     Column(modifier = modifier) {
-        // A list to accumulate non-table text nodes
-        val currentTextNodes = mutableListOf<MarkdownNode>()
+        var previousNode: MarkdownNode? = null
+        val textNodeGrouper = mutableListOf<MarkdownNode>()
 
-        // Composable function to render the accumulated text nodes
+        /**
+         * Renders grouped inline text elements in a single `Text` composable.
+         */
         @Composable
-        fun renderTextNodes() {
-            if (currentTextNodes.isNotEmpty()) {
-                // Render the accumulated text nodes as a Text composable
+        fun flushTextGroup() {
+            if (textNodeGrouper.isNotEmpty()) {
+                if (previousNode != null) {
+                    Spacer(modifier = Modifier.height(DefaultBlockSpacing))
+                }
                 Text(
-                    text = MarkdownRenderer.render(currentTextNodes, textColor),
+                    text = MarkdownRenderer.render(textNodeGrouper, textColor),
                     style = style,
                     color = textColor,
                     modifier = Modifier.fillMaxWidth()
                 )
-                // Clear the list after rendering
-                currentTextNodes.clear()
+                previousNode = textNodeGrouper.last()
+                textNodeGrouper.clear()
             }
         }
 
-        // Iterate through each parsed Markdown node
-        nodes.forEach { node ->
+        nodes.forEachIndexed { index, node ->
+            val addSpacing = index > 0 && when (node) {
+                is ListItemNode -> previousNode !is ListItemNode
+                else -> true
+            }
+
             when (node) {
                 is TableNode -> {
-                    // Before rendering a table, render any accumulated text nodes
-                    renderTextNodes()
-
-                    // Add spacing before the table
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Render the table using a dedicated Table.RenderTable function
+                    flushTextGroup()
+                    if (addSpacing) Spacer(modifier = Modifier.height(DefaultBlockSpacing))
                     Table.RenderTable(
                         tableNode = node,
                         textColor = textColor,
                         modifier = Modifier.fillMaxWidth()
                     )
-
-                    // Add spacing after the table
-                    Spacer(modifier = Modifier.height(8.dp))
+                    previousNode = node
                 }
                 is HorizontalRuleNode -> {
-                    // Before rendering a horizontal rule, render any accumulated text nodes
-                    renderTextNodes()
-
-                    // Add spacing before the rule
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Render the horizontal rule
-                    HorizontalRule.Render(color = textColor)
-
-                    // Add spacing after the rule
-                    Spacer(modifier = Modifier.height(8.dp))
+                    flushTextGroup()
+                    if (addSpacing) Spacer(modifier = Modifier.height(DefaultBlockSpacing))
+                    HorizontalRule.Render(color = textColor.copy(alpha = 0.5f))
+                    previousNode = node
+                }
+                is HeaderNode -> {
+                    flushTextGroup()
+                    if (addSpacing) Spacer(modifier = Modifier.height(DefaultBlockSpacing))
+                    Text(
+                        text = MarkdownRenderer.render(listOf(node), textColor),
+                        style = style,
+                        color = textColor,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = HeaderBottomSpacing)
+                    )
+                    previousNode = node
+                }
+                is ListItemNode -> {
+                    flushTextGroup()
+                    if (addSpacing) Spacer(modifier = Modifier.height(DefaultBlockSpacing / 2))
+                    Text(
+                        text = MarkdownRenderer.render(listOf(node), textColor),
+                        style = style,
+                        color = textColor,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    previousNode = node
+                }
+                is BlockQuoteNode, is CodeNode -> {
+                    flushTextGroup()
+                    if (addSpacing) Spacer(modifier = Modifier.height(DefaultBlockSpacing))
+                    Text(
+                        text = MarkdownRenderer.render(listOf(node), textColor),
+                        style = style,
+                        color = textColor,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    previousNode = node
+                }
+                is LineBreakNode -> {
+                    flushTextGroup()
+                    if (previousNode !is LineBreakNode) {
+                        Spacer(modifier = Modifier.height(DefaultBlockSpacing))
+                    }
+                    previousNode = node
                 }
                 else -> {
-                    // If it's not a table node, accumulate the text node
-                    currentTextNodes.add(node)
+                    textNodeGrouper.add(node)
                 }
             }
         }
-
-        // Render any remaining text nodes after processing all nodes
-        renderTextNodes()
+        flushTextGroup()
     }
 }

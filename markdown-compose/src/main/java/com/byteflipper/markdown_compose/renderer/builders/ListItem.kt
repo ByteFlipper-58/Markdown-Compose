@@ -14,7 +14,6 @@ object ListItem {
                 append("• ")
             }
             node.content.forEach { MarkdownRenderer.renderNode(this, it, textColor) }
-            append("\n")
         }
     }
 }
