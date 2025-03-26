@@ -1,9 +1,17 @@
+// File: markdown-compose/src/main/java/com/byteflipper/markdown_compose/model/MarkdownNode.kt
 package com.byteflipper.markdown_compose.model
 
 sealed interface MarkdownNode
 
 data class HeaderNode(val content: List<MarkdownNode>, val level: Int) : MarkdownNode
-data class ListItemNode(val content: List<MarkdownNode>) : MarkdownNode
+
+data class ListItemNode(
+    val content: List<MarkdownNode>,
+    val indentLevel: Int,
+    val isOrdered: Boolean,
+    val order: Int? = null
+) : MarkdownNode
+
 data class BlockQuoteNode(val content: List<MarkdownNode>) : MarkdownNode
 object LineBreakNode : MarkdownNode
 object HorizontalRuleNode : MarkdownNode
