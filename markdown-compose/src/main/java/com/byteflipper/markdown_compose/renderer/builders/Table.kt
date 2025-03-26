@@ -2,12 +2,16 @@ package com.byteflipper.markdown_compose.renderer.builders
 
 import android.util.Log
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
@@ -15,245 +19,304 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import com.byteflipper.markdown_compose.model.ColumnAlignment
-import com.byteflipper.markdown_compose.model.TableNode
+import com.byteflipper.markdown_compose.model.*
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 
 private const val TAG = "TableRenderer"
 
 object Table {
 
-    // Define default padding in Dp
-    private val DefaultCellPadding: Dp = 8.dp
-
     /**
-     * Renders a table inside a Composable, with the given table node and text color.
-     * This function calculates the table's layout and cell sizes dynamically,
-     * and renders the table with proper scaling and alignment.
-     * The table grid and content are drawn using `Canvas` for precise control.
+     * Renders a Markdown table using a custom Layout and Canvas, applying styles from the StyleSheet.
+     * Supports customizable cell padding, border thickness, color, and outer border rounding.
      *
-     * @param tableNode The TableNode that contains the data to be displayed in the table.
-     * @param textColor The color to be used for the table content text.
-     * @param modifier The modifier to be applied to the Canvas and Layout components.
+     * @param tableNode The TableNode containing the table data.
+     * @param styleSheet The stylesheet defining table appearance.
+     * @param modifier Modifier for layout adjustments.
      */
     @Composable
-    fun RenderTable(tableNode: TableNode, textColor: Color, modifier: Modifier = Modifier) {
-        Log.d(TAG, "Start rendering table")
+    fun RenderTable(tableNode: TableNode, styleSheet: MarkdownStyleSheet, modifier: Modifier = Modifier) {
+        Log.d(TAG, "Start rendering table with style: ${styleSheet.tableStyle}")
 
         val textMeasurer: TextMeasurer = rememberTextMeasurer()
-
         val density = LocalDensity.current
-        val cellPaddingPx: Float = with(density) { DefaultCellPadding.toPx() }
+        val tableStyle = styleSheet.tableStyle
 
-        // Store measured text results to avoid re-measuring
-        val measuredCells = mutableMapOf<Pair<Int, Int>, TextLayoutResult>()
+        // Convert Dp styles to Px
+        val cellPaddingPx = with(density) { tableStyle.cellPadding.toPx() }
+        val borderThicknessPx = with(density) { tableStyle.borderThickness.toPx().coerceAtLeast(0.1f) }
 
-        // Calculating column widths and row heights based on content
-        val rowHeights = mutableListOf<Float>()
-        var columnWidths = tableNode.columnWidths.toMutableList() // Use predefined if available
-
-        val columnCount = tableNode.columnAlignments.size
-        // Find the maximum number of cells in any row to determine actual columns needed
-        val actualColumnCount = tableNode.rows.maxOfOrNull { it.cells.size } ?: columnCount
-
-        // Ensure columnWidths has enough entries if calculated dynamically
-        if (columnWidths.isEmpty()) {
-            // Initialize with 0f for all actual columns
-            columnWidths = MutableList(actualColumnCount) { 0f }
-        } else if (columnWidths.size < actualColumnCount) {
-            // Pad existing columnWidths if rows have more columns than initially specified
-            columnWidths.addAll(List(actualColumnCount - columnWidths.size) { 0f })
+        // Pre-measure cells and calculate dimensions
+        // The lambda passed to remember is NOT a @Composable context
+        val (rowHeightsPx, columnWidthsPx, measuredCells) = remember(tableNode, styleSheet, textMeasurer, cellPaddingPx, density) {
+            // Pass the necessary non-composable context into the measurement function
+            measureTableContent(tableNode, styleSheet, textMeasurer, density, cellPaddingPx)
         }
 
+        // Add padding to dimensions
+        val paddedRowHeightsPx = rowHeightsPx.map { it + (2 * cellPaddingPx) }
+        val paddedColumnWidthsPx = columnWidthsPx.map { it + (2 * cellPaddingPx) }
+        val totalUnscaledPaddedWidth = paddedColumnWidthsPx.sum()
+        val totalUnscaledPaddedHeight = paddedRowHeightsPx.sum()
 
-        // Iterate over rows to measure content and calculate dimensions
-        tableNode.rows.forEachIndexed { rowIndex, row ->
-            var rowMaxHeight = 0f
-            row.cells.forEach { cell ->
-                val cellContent = MarkdownRenderer.render(cell.content, textColor)
-                // Measure text and store result
-                val textLayoutResult = textMeasurer.measure(cellContent).also {
-                    measuredCells[rowIndex to cell.columnIndex] = it
-                }
-
-                val cellHeight = textLayoutResult.size.height.toFloat()
-                if (cellHeight > rowMaxHeight) {
-                    rowMaxHeight = cellHeight
-                }
-
-                // If widths need calculating, find max width per column
-                if (tableNode.columnWidths.isEmpty()) {
-                    val columnIndex = cell.columnIndex
-                    if (columnIndex < columnWidths.size) { // Check bounds
-                        val cellWidth = textLayoutResult.size.width.toFloat()
-                        if (cellWidth > columnWidths[columnIndex]) {
-                            columnWidths[columnIndex] = cellWidth
-                        }
-                    } else {
-                        Log.w(TAG, "Cell column index ${cell.columnIndex} is out of bounds for calculated column widths size ${columnWidths.size}. Row content: $cellContent")
-                    }
-                }
-            }
-            // Add padding to row height (top and bottom)
-            rowHeights.add(rowMaxHeight + (2 * cellPaddingPx))
-        }
-
-        // *** FIX 2: Type inference should now work correctly ***
-        // Add padding to each column width (left and right)
-        val paddedColumnWidths: List<Float> = columnWidths.map { it + (2 * cellPaddingPx) }
-        val totalPaddedWidth: Float = paddedColumnWidths.sum()
-
-        // Using custom Layout to handle table rendering and size reporting
         Layout(
             content = {
-                Canvas(modifier = Modifier.fillMaxWidth()) {
-                    // If totalPaddedWidth is zero, avoid division by zero
-                    val scale = if (totalPaddedWidth > 0f) size.width / totalPaddedWidth else 1f
+                // Use fillMaxSize() to make the Canvas take the size determined by the Layout's measurePolicy
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val layoutWidth = size.width
+                    val layoutHeight = size.height
 
-                    // Scaled dimensions
-                    val scaledRowHeights: List<Float> = rowHeights.map { it * scale }
-                    val scaledPaddedColumnWidths: List<Float> = paddedColumnWidths.map { it * scale }
+                    // Calculate scale based *only* on width, height scales proportionally
+                    val scale = if (totalUnscaledPaddedWidth > 0f) layoutWidth / totalUnscaledPaddedWidth else 1f
+                    //val actualScaledHeight = totalUnscaledPaddedHeight * scale // This might not match layoutHeight if constrained
 
-                    Log.d(TAG, "Scale: $scale, Width: ${size.width}, TotalPaddedWidth: $totalPaddedWidth")
-                    Log.d(TAG, "Scaled Row Heights: $scaledRowHeights")
-                    Log.d(TAG, "Scaled Padded Column Widths: $scaledPaddedColumnWidths")
+                    // Recalculate scaled dimensions based on actual layout width and scale
+                    val scaledPaddedColumnWidths = paddedColumnWidthsPx.map { it * scale }
+                    val scaledPaddedRowHeights = paddedRowHeightsPx.map { it * scale }
+                    // Consider border thickness scaling - let's NOT scale it for consistency.
+                    val scaledBorderThickness = borderThicknessPx
+                    val scaledCellPadding = cellPaddingPx * scale
 
-                    // Draw the table grid (borders)
-                    drawTableGrid(
-                        scaledColumnWidths = scaledPaddedColumnWidths,
-                        scaledRowHeights = scaledRowHeights,
-                        borderColor = textColor.copy(alpha = 0.3f) // Use a visible border color
-                    )
+                    Log.d(TAG, "Canvas Size: $size, Scale: $scale")
+                    Log.d(TAG, "Scaled Padded Widths: $scaledPaddedColumnWidths")
+                    Log.d(TAG, "Scaled Padded Heights: $scaledPaddedRowHeights")
 
-                    // Draw cell contents
-                    var yOffset = 0f
 
-                    tableNode.rows.forEachIndexed { rowIndex, row ->
-                        var xOffset = 0f
-                        val scaledCurrentRowHeight = scaledRowHeights.getOrElse(rowIndex) { 0f }
+                    // --- Drawing Logic ---
+                    val totalGridWidth = scaledPaddedColumnWidths.sum()
+                    // Use the actual height provided to the canvas, which might be constrained
+                    val totalGridHeight = scaledPaddedRowHeights.sum().coerceAtMost(layoutHeight)
 
-                        row.cells.forEach { cell ->
-                            val columnIndex = cell.columnIndex
-                            if (columnIndex < scaledPaddedColumnWidths.size) { // Check bounds
-                                val scaledCellWidth = scaledPaddedColumnWidths[columnIndex]
-                                // Use pre-measured result
-                                val textLayoutResult = measuredCells[rowIndex to columnIndex]
+                    // Prepare outline shape if needed
+                    val outlineShape = tableStyle.outerBorderShape
+                    val outlinePath = if (outlineShape != null) {
+                        Path().apply { addOutline(outlineShape.createOutline(Size(totalGridWidth, totalGridHeight), layoutDirection, density)) }
+                    } else null
 
-                                if (textLayoutResult != null) {
-                                    // Position the text inside the cell based on alignment
-                                    val alignment = tableNode.columnAlignments.getOrElse(columnIndex) { ColumnAlignment.LEFT }
-
-                                    // Calculate horizontal position
-                                    val textX: Float = when (alignment) {
-                                        ColumnAlignment.LEFT -> xOffset + (cellPaddingPx * scale) // Apply padding offset
-                                        ColumnAlignment.RIGHT -> xOffset + scaledCellWidth - textLayoutResult.size.width - (cellPaddingPx * scale) // Subtract text width and padding
-                                        ColumnAlignment.CENTER -> xOffset + (scaledCellWidth - textLayoutResult.size.width) / 2f // Center between padded bounds
-                                    }
-
-                                    // Calculate vertical position (center within the cell height)
-                                    val textY: Float = yOffset + (scaledCurrentRowHeight - textLayoutResult.size.height) / 2f
-
-                                    // Draw the text inside the cell
-                                    drawText(
-                                        textLayoutResult = textLayoutResult,
-                                        // Ensure text doesn't draw outside cell bounds due to measurement/float issues
-                                        topLeft = Offset(textX.coerceAtLeast(xOffset), textY.coerceAtLeast(yOffset))
-                                    )
-                                } else {
-                                    Log.w(TAG, "No measured text found for cell ($rowIndex, $columnIndex)")
-                                }
-                                xOffset += scaledCellWidth // Move to the next column position
-                            } else {
-                                Log.w(TAG, "Cell column index ${cell.columnIndex} is out of bounds for scaled column widths size ${scaledPaddedColumnWidths.size} during drawing.")
-                            }
+                    // Clip drawing if shape is defined
+                    if (outlinePath != null) {
+                        clipPath(outlinePath, clipOp = ClipOp.Intersect) {
+                            // Draw grid and content within the clipped area
+                            drawGridAndContent(
+                                tableNode = tableNode,
+                                measuredCells = measuredCells,
+                                scaledPaddedColumnWidths = scaledPaddedColumnWidths,
+                                scaledPaddedRowHeights = scaledPaddedRowHeights,
+                                scaledCellPadding = scaledCellPadding,
+                                borderThickness = scaledBorderThickness,
+                                borderColor = tableStyle.borderColor,
+                                columnAlignments = tableNode.columnAlignments
+                            )
                         }
-                        yOffset += scaledCurrentRowHeight // Move to the next row position
+                        // Draw the outline border itself if shape exists
+                        if (scaledBorderThickness > 0) {
+                            drawPath(
+                                path = outlinePath,
+                                color = tableStyle.borderColor,
+                                style = Stroke(width = scaledBorderThickness)
+                            )
+                        }
+                    } else {
+                        // Draw without clipping if no shape
+                        drawGridAndContent(
+                            tableNode = tableNode,
+                            measuredCells = measuredCells,
+                            scaledPaddedColumnWidths = scaledPaddedColumnWidths,
+                            scaledPaddedRowHeights = scaledPaddedRowHeights,
+                            scaledCellPadding = scaledCellPadding,
+                            borderThickness = scaledBorderThickness,
+                            borderColor = tableStyle.borderColor,
+                            columnAlignments = tableNode.columnAlignments
+                        )
+                        // Draw rectangular outer border if thickness > 0 and no shape
+                        if (scaledBorderThickness > 0) {
+                            drawRect(
+                                color = tableStyle.borderColor,
+                                topLeft = Offset.Zero,
+                                size = Size(totalGridWidth, totalGridHeight),
+                                style = Stroke(width = scaledBorderThickness)
+                            )
+                        }
                     }
                 }
             },
             modifier = modifier,
-            // Explicitly type the lambda parameter if necessary, though inference should work
-            measurePolicy = { measurables, constraints: Constraints ->
-                // Measure the Canvas itself to occupy the constraints' width
-                val placeables = measurables.map { measurable ->
-                    // Allow canvas to determine its height based on drawing, constrained by width
-                    measurable.measure(constraints.copy(minHeight = 0))
-                }
+            measurePolicy = { measurables, constraints ->
+                // Calculate the required width based on unscaled padded widths
+                val requiredWidth = totalUnscaledPaddedWidth.coerceAtLeast(0f)
+                // Calculate the final width based on constraints
+                val finalWidth = requiredWidth.coerceIn(constraints.minWidth.toFloat(), constraints.maxWidth.toFloat())
 
-                // *** FIX 3: The compareTo error should be resolved by fixing toPx ***
-                // Determine the final scaled height based on the actual width constraint
-                val finalScale: Float = if (totalPaddedWidth > 0f) constraints.maxWidth / totalPaddedWidth else 1f
-                val totalScaledHeightPx = (rowHeights.sum() * finalScale).toInt()
+                // Calculate scale based on final width
+                val scale = if (totalUnscaledPaddedWidth > 0f) finalWidth / totalUnscaledPaddedWidth else 1f
+                // Calculate required height based on final scale
+                val requiredHeight = (totalUnscaledPaddedHeight * scale).coerceAtLeast(0f)
+                // Calculate the final height based on constraints
+                val finalHeight = requiredHeight.coerceIn(constraints.minHeight.toFloat(), constraints.maxHeight.toFloat())
 
-                // Use constraints' max width and calculated scaled height
-                val width = constraints.maxWidth
-                // Ensure height respects constraints boundaries
-                val height = totalScaledHeightPx.coerceIn(constraints.minHeight, constraints.maxHeight)
+                // Measure the single child (Canvas) with the final determined size
+                val placeable = measurables.first().measure(
+                    Constraints.fixed(finalWidth.toInt(), finalHeight.toInt())
+                )
 
-                Log.d(TAG, "Layout: Width=$width, Height=$height (ScaledTotal: $totalScaledHeightPx)")
+                Log.d(TAG, "Layout - Constraints: $constraints, Required W/H: $requiredWidth/$requiredHeight, Final W/H: ${finalWidth.toInt()}/${finalHeight.toInt()}")
 
-                // Layout content within the calculated table size
-                layout(width, height) {
-                    placeables.forEach { placeable ->
-                        placeable.placeRelative(0, 0)
-                    }
+                layout(finalWidth.toInt(), finalHeight.toInt()) {
+                    placeable.placeRelative(0, 0)
                 }
             }
         )
     }
 
-    /**
-     * Draws the grid lines for the table, including both horizontal and vertical lines.
-     * Uses the already scaled dimensions.
-     *
-     * @param scaledColumnWidths List of scaled column widths (including padding).
-     * @param scaledRowHeights List of scaled row heights (including padding).
-     * @param borderColor The color for the table borders.
-     */
-    private fun DrawScope.drawTableGrid(
-        scaledColumnWidths: List<Float>,
-        scaledRowHeights: List<Float>,
-        borderColor: Color
-    ) {
-        var yPos = 0f
-        val totalGridHeight = scaledRowHeights.sum()
-        // Use DrawScope's size.width which reflects the actual drawing area width
-        val totalGridWidth = size.width // Use actual canvas width
 
-        // Draw horizontal lines
-        // Draw top border
-        drawLine(color = borderColor, start = Offset(0f, 0f), end = Offset(totalGridWidth, 0f), strokeWidth = 1f)
-        // Draw row separators and bottom border
-        scaledRowHeights.forEach { rowHeight ->
-            yPos += rowHeight
-            // Coerce line position to ensure it's within the canvas bounds
-            val finalYPos = yPos.coerceAtMost(totalGridHeight)
-            drawLine(
-                color = borderColor,
-                start = Offset(0f, finalYPos),
-                end = Offset(totalGridWidth, finalYPos),
-                strokeWidth = 1f
-            )
+    /**
+     * Measures cell content to determine required row heights and column widths.
+     * This function is NOT @Composable and receives necessary context as parameters.
+     *
+     * @return Triple containing (list of row heights in Px, list of column widths in Px, map of measured cells)
+     */
+    private fun measureTableContent(
+        tableNode: TableNode,
+        styleSheet: MarkdownStyleSheet,
+        textMeasurer: TextMeasurer,
+        density: androidx.compose.ui.unit.Density, // Pass density if needed for render
+        cellPaddingPx: Float // Padding already in Px
+    ): Triple<List<Float>, List<Float>, Map<Pair<Int, Int>, TextLayoutResult>> {
+        val measuredCells = mutableMapOf<Pair<Int, Int>, TextLayoutResult>()
+        val rowHeightsPx = mutableListOf<Float>()
+        // Initialize column widths with 0f
+        val actualColumnCount = tableNode.rows.maxOfOrNull { it.cells.size } ?: tableNode.columnAlignments.size
+        val columnWidthsPx = MutableList(actualColumnCount) { 0f }
+
+        tableNode.rows.forEachIndexed { rowIndex, row ->
+            var maxRowHeight = 0f
+            row.cells.forEach { cell ->
+                val columnIndex = cell.columnIndex
+                // Render cell content to AnnotatedString - this itself is NOT composable
+                val cellAnnotatedString = MarkdownRenderer.render(cell.content, styleSheet)
+                // Measure text - this uses TextMeasurer but is NOT composable
+                val textLayoutResult = textMeasurer.measure(cellAnnotatedString).also {
+                    measuredCells[rowIndex to columnIndex] = it
+                }
+
+                val textHeight = textLayoutResult.size.height.toFloat()
+                val textWidth = textLayoutResult.size.width.toFloat()
+
+                if (textHeight > maxRowHeight) {
+                    maxRowHeight = textHeight
+                }
+
+                if (columnIndex < columnWidthsPx.size) {
+                    if (textWidth > columnWidthsPx[columnIndex]) {
+                        columnWidthsPx[columnIndex] = textWidth
+                    }
+                } else {
+                    Log.w(TAG, "Cell column index $columnIndex out of bounds during measurement (max $actualColumnCount)")
+                }
+            }
+            rowHeightsPx.add(maxRowHeight) // Store height *without* padding
         }
 
-        // Draw vertical lines
+        return Triple(rowHeightsPx.toList(), columnWidthsPx.toList(), measuredCells.toMap())
+    }
+
+
+    /**
+     * Draws the table grid lines (internal horizontal and vertical) and the cell content.
+     * Should be called within a DrawScope, potentially clipped.
+     */
+    private fun DrawScope.drawGridAndContent(
+        tableNode: TableNode,
+        measuredCells: Map<Pair<Int, Int>, TextLayoutResult>,
+        scaledPaddedColumnWidths: List<Float>,
+        scaledPaddedRowHeights: List<Float>,
+        scaledCellPadding: Float,
+        borderThickness: Float,
+        borderColor: Color,
+        columnAlignments: List<ColumnAlignment>
+    ) {
+        val totalGridHeight = scaledPaddedRowHeights.sum().coerceAtMost(size.height) // Respect draw scope bounds
+        val totalGridWidth = scaledPaddedColumnWidths.sum().coerceAtMost(size.width)
+
+        var yPos = 0f
+        // Draw horizontal lines (row separators)
+        if (borderThickness > 0) {
+            scaledPaddedRowHeights.dropLast(1).forEach { rowHeight ->
+                yPos += rowHeight
+                val currentY = yPos.coerceAtMost(totalGridHeight) // Ensure line is within bounds
+                drawLine(
+                    color = borderColor,
+                    start = Offset(0f, currentY),
+                    end = Offset(totalGridWidth, currentY),
+                    strokeWidth = borderThickness
+                )
+            }
+        }
+
+
         var xPos = 0f
-        // Draw left border
-        drawLine(color = borderColor, start = Offset(0f, 0f), end = Offset(0f, totalGridHeight), strokeWidth = 1f)
-        // Draw column separators and right border
-        // Use indices to safely access widths and prevent issues if list is empty
-        scaledColumnWidths.forEachIndexed { index, colWidth ->
-            xPos += colWidth
-            // Coerce line position, especially for the last line to match totalGridWidth
-            val finalXPos = if (index == scaledColumnWidths.lastIndex) totalGridWidth else xPos.coerceAtMost(totalGridWidth)
-            drawLine(
-                color = borderColor,
-                start = Offset(finalXPos, 0f),
-                end = Offset(finalXPos, totalGridHeight),
-                strokeWidth = 1f
-            )
+        // Draw vertical lines (column separators)
+        if (borderThickness > 0) {
+            scaledPaddedColumnWidths.dropLast(1).forEach { colWidth ->
+                xPos += colWidth
+                val currentX = xPos.coerceAtMost(totalGridWidth) // Ensure line is within bounds
+                drawLine(
+                    color = borderColor,
+                    start = Offset(currentX, 0f),
+                    end = Offset(currentX, totalGridHeight),
+                    strokeWidth = borderThickness
+                )
+            }
+        }
+
+
+        // Draw cell contents
+        var currentY = 0f
+        tableNode.rows.forEachIndexed { rowIndex, row ->
+            var currentX = 0f
+            val scaledCurrentRowHeight = scaledPaddedRowHeights.getOrElse(rowIndex) { 0f }
+
+            row.cells.forEach { cell ->
+                val columnIndex = cell.columnIndex
+                if (columnIndex < scaledPaddedColumnWidths.size) {
+                    val scaledCellWidth = scaledPaddedColumnWidths[columnIndex]
+                    val textLayoutResult = measuredCells[rowIndex to columnIndex]
+
+                    if (textLayoutResult != null) {
+                        val alignment = columnAlignments.getOrElse(columnIndex) { ColumnAlignment.LEFT }
+
+                        val textAvailableWidth = (scaledCellWidth - 2 * scaledCellPadding).coerceAtLeast(0f)
+                        val textAvailableHeight = (scaledCurrentRowHeight - 2 * scaledCellPadding).coerceAtLeast(0f)
+
+                        val textWidth = textLayoutResult.size.width.toFloat()
+                        val textHeight = textLayoutResult.size.height.toFloat()
+
+                        val textOffsetX = when (alignment) {
+                            ColumnAlignment.LEFT -> currentX + scaledCellPadding
+                            ColumnAlignment.RIGHT -> currentX + scaledCellWidth - scaledCellPadding - textWidth
+                            ColumnAlignment.CENTER -> currentX + (scaledCellWidth - textWidth) / 2f
+                        }
+                        // Center text vertically within the padded cell height
+                        val textOffsetY = currentY + (scaledCurrentRowHeight - textHeight) / 2f
+
+                        // Clip text drawing to cell bounds if necessary? TextMeasurer should handle wrapping.
+                        // We coerce the topLeft offset to prevent drawing outside the cell boundaries.
+                        drawText(
+                            textLayoutResult = textLayoutResult,
+                            topLeft = Offset(
+                                x = textOffsetX.coerceIn(currentX, currentX + scaledCellWidth - textWidth),
+                                y = textOffsetY.coerceIn(currentY, currentY + scaledCurrentRowHeight - textHeight)
+                            )
+                        )
+                    } else {
+                        Log.w(TAG, "No measured text found for cell ($rowIndex, $columnIndex)")
+                    }
+                    currentX += scaledCellWidth // Move to next column start
+                } else {
+                    Log.w(TAG, "Cell column index $columnIndex out of bounds during content drawing")
+                }
+            }
+            currentY += scaledCurrentRowHeight // Move to next row start
         }
     }
 }

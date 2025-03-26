@@ -1,170 +1,149 @@
-// File: markdown-compose/src/main/java/com/byteflipper/markdown_compose/MarkdownText.kt
 package com.byteflipper.markdown_compose
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.byteflipper.markdown_compose.model.*
 import com.byteflipper.markdown_compose.parser.MarkdownParser
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
+import com.byteflipper.markdown_compose.renderer.builders.BlockQuoteComposable
 import com.byteflipper.markdown_compose.renderer.builders.Table
 import com.byteflipper.markdown_compose.renderer.canvas.HorizontalRule
 
-// Default spacing values for block elements
-private val DefaultBlockSpacing = 16.dp
-private val HeaderBottomSpacing = 4.dp
-private val ListSpacing = 4.dp
-private val LineBreakSpacing = 16.dp
-
-
 /**
  * Composable function to render Markdown content as Jetpack Compose UI components.
- * Handles block layout, spacing, and rendering of different Markdown elements.
+ * Handles block layout, spacing, and rendering of different Markdown elements using customizable styles.
  *
  * @param markdown The Markdown string to be rendered.
  * @param modifier Modifier for layout adjustments.
- * @param textColor Default text color, can be overridden.
- * @param style Text style applied to Markdown elements.
+ * @param styleSheet The stylesheet defining the visual appearance of Markdown elements.
+ *                   Defaults to `defaultMarkdownStyleSheet()` based on MaterialTheme.
  */
 @Composable
 fun MarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
-    textColor: Color = Color.Unspecified,
-    style: TextStyle = MaterialTheme.typography.bodyMedium
+    styleSheet: MarkdownStyleSheet = defaultMarkdownStyleSheet()
 ) {
-    // Parse Markdown once and remember the result
     val nodes = remember(markdown) { MarkdownParser.parse(markdown) }
-    val resolvedTextColor = if (textColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else textColor
-
+    val baseTextStyle = styleSheet.textStyle.merge(LocalTextStyle.current)
+    val resolvedTextColor = baseTextStyle.color
 
     Column(modifier = modifier) {
-        var lastRenderedNode: MarkdownNode? = null // Track the last *block* node rendered for spacing logic
-        val textNodeGrouper = mutableListOf<MarkdownNode>() // Group consecutive inline/text nodes
+        var lastRenderedNode: MarkdownNode? = null
+        val textNodeGrouper = mutableListOf<MarkdownNode>()
 
         /**
-         * Renders grouped inline text elements (TextNode, Bold, Italic, etc.)
-         * in a single `Text` composable for better performance and paragraph handling.
+         * Renders grouped inline text elements in a single `Text` composable.
          */
         @Composable
         fun flushTextGroup() {
             if (textNodeGrouper.isNotEmpty()) {
-                // Add spacing before a text block if needed (e.g., after HR, Header)
+                // Add spacing before a text block if needed
                 if (lastRenderedNode !is LineBreakNode && lastRenderedNode != null) {
-                    Spacer(modifier = Modifier.height(DefaultBlockSpacing))
+                    Spacer(modifier = Modifier.height(styleSheet.blockSpacing))
                 }
 
                 Text(
-                    text = MarkdownRenderer.render(textNodeGrouper, resolvedTextColor),
-                    style = style,
-                    color = resolvedTextColor, // Apply resolved color
+                    text = MarkdownRenderer.render(textNodeGrouper, styleSheet),
+                    style = baseTextStyle,
                     modifier = Modifier.fillMaxWidth()
                 )
-                lastRenderedNode = textNodeGrouper.last() // Mark the end of the text block
+                lastRenderedNode = textNodeGrouper.last()
                 textNodeGrouper.clear()
             }
         }
 
         nodes.forEachIndexed { index, node ->
-            // Determine if top spacing is needed before rendering the current node
             val needsTopSpacing = index > 0 && lastRenderedNode != null && lastRenderedNode !is LineBreakNode
 
-            // Calculate spacing based on current node type and context
             val spacingDp = when (node) {
-                is HeaderNode -> if (needsTopSpacing) DefaultBlockSpacing else 0.dp
+                is HeaderNode -> if (needsTopSpacing) styleSheet.blockSpacing else 0.dp
                 is TableNode, is HorizontalRuleNode, is BlockQuoteNode, is CodeNode ->
-                    if (needsTopSpacing) DefaultBlockSpacing else 0.dp
-                is ListItemNode -> if (needsTopSpacing && lastRenderedNode !is ListItemNode) ListSpacing else 0.dp // Space before list starts
-                is LineBreakNode -> if (lastRenderedNode !is LineBreakNode && lastRenderedNode != null) LineBreakSpacing else 0.dp // Space for blank line
-                else -> 0.dp // Text nodes are handled by flushTextGroup
+                    if (needsTopSpacing) styleSheet.blockSpacing else 0.dp
+                // Custom spacing for list items based on context
+                is ListItemNode -> when {
+                    needsTopSpacing && lastRenderedNode is ListItemNode -> styleSheet.listStyle.itemSpacing // Space between consecutive items
+                    needsTopSpacing && lastRenderedNode !is ListItemNode -> styleSheet.listStyle.itemSpacing // Space before first item if needed
+                    else -> 0.dp
+                }
+                is LineBreakNode -> if (lastRenderedNode !is LineBreakNode && lastRenderedNode != null) styleSheet.lineBreakSpacing else 0.dp
+                else -> 0.dp
             }
 
-
-            // Render based on node type
             when (node) {
-                // Block elements that require flushing previous text group first
                 is TableNode, is HorizontalRuleNode, is HeaderNode, is ListItemNode, is BlockQuoteNode, is CodeNode -> {
-                    flushTextGroup() // Render any pending text first
+                    flushTextGroup()
 
-                    // Add calculated spacing
                     if (spacingDp > 0.dp) {
                         Spacer(modifier = Modifier.height(spacingDp))
                     }
 
-                    // Render the specific block element
                     when (node) {
                         is TableNode -> {
                             Table.RenderTable(
                                 tableNode = node,
-                                textColor = resolvedTextColor,
+                                styleSheet = styleSheet,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                         is HorizontalRuleNode -> {
-                            HorizontalRule.Render(color = resolvedTextColor.copy(alpha = 0.5f))
+                            HorizontalRule.Render(
+                                color = styleSheet.horizontalRuleStyle.color,
+                                thickness = styleSheet.horizontalRuleStyle.thickness
+                            )
                         }
                         is HeaderNode -> {
                             Text(
-                                text = MarkdownRenderer.render(listOf(node), resolvedTextColor),
-                                style = style, // Base style, specific styling done in renderer
-                                color = resolvedTextColor,
-                                modifier = Modifier.fillMaxWidth().padding(bottom = HeaderBottomSpacing) // Add bottom padding specific to headers
+                                text = MarkdownRenderer.render(listOf(node), styleSheet),
+                                style = baseTextStyle,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = styleSheet.headerStyle.bottomPadding)
                             )
                         }
                         is ListItemNode -> {
-                            // Padding/indentation is handled by the renderer using spaces
                             Text(
-                                text = MarkdownRenderer.render(listOf(node), resolvedTextColor),
-                                style = style,
-                                color = resolvedTextColor,
+                                text = MarkdownRenderer.render(listOf(node), styleSheet),
+                                style = baseTextStyle,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                         is BlockQuoteNode -> {
-                            Text(
-                                text = MarkdownRenderer.render(listOf(node), resolvedTextColor),
-                                style = style, // Base style
-                                color = resolvedTextColor, // Renderer might override color/style
+                            BlockQuoteComposable(
+                                node = node,
+                                styleSheet = styleSheet,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                         is CodeNode -> {
                             Text(
-                                text = MarkdownRenderer.render(listOf(node), resolvedTextColor),
-                                style = style, // Base style
-                                color = resolvedTextColor, // Renderer might override color/style
+                                text = MarkdownRenderer.render(listOf(node), styleSheet),
+                                style = baseTextStyle,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
-                        // Exhaustive check - should not happen due to outer when
                         else -> {}
                     }
-                    lastRenderedNode = node // Update last rendered block node
+                    lastRenderedNode = node
                 }
 
-                // Line break node - flush text and add specific spacing
                 is LineBreakNode -> {
                     flushTextGroup()
                     if (spacingDp > 0.dp) {
                         Spacer(modifier = Modifier.height(spacingDp))
                     }
-                    lastRenderedNode = node // Mark line break as rendered
+                    lastRenderedNode = node
                 }
 
-                // Inline/Text elements - add to grouper
-                else -> { // Includes TextNode, BoldTextNode, ItalicTextNode, etc.
+                else -> {
                     textNodeGrouper.add(node)
-                    // Don't update lastRenderedNode here; wait for flushTextGroup
                 }
             }
         }
-        // Flush any remaining text at the end
         flushTextGroup()
     }
 }
