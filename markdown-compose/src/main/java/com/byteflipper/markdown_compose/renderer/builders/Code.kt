@@ -15,7 +15,6 @@ object Code {
      */
     fun render(builder: AnnotatedString.Builder, node: CodeNode, styleSheet: MarkdownStyleSheet) {
         if (!node.isBlock) {
-            Log.d(TAG, "Rendering inline code: '${node.code}' with style: ${styleSheet.inlineCodeStyle}")
             builder.withStyle(styleSheet.inlineCodeStyle) {
                 append(node.code)
             }

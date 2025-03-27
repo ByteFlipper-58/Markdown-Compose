@@ -1,5 +1,3 @@
-// FILE: markdown-compose/src/main/java/com/byteflipper/markdown_compose/model/MarkdownStyleSheet.kt
-// @Modification: Moved MaterialTheme access outside the 'remember' lambda to fix the composable context error.
 package com.byteflipper.markdown_compose.model
 
 import androidx.compose.foundation.layout.PaddingValues
@@ -100,6 +98,10 @@ data class LinkStyle(
  *
  * Provides customization options for various Markdown elements.
  * A default implementation based on MaterialTheme can be obtained using `defaultMarkdownStyleSheet()`.
+ *
+ * Note on `inlineCodeStyle`: This uses `SpanStyle`, which styles the text itself (font, color, background *within the line*, etc.).
+ * It cannot add padding *around* the text or create rounded corners for the background distinct from the text line.
+ * For visual distinction, customize the `background` and `color` properties.
  */
 @Immutable
 data class MarkdownStyleSheet(
@@ -127,12 +129,14 @@ data class MarkdownStyleSheet(
  * @param italicTextStyle Default style for italic text, derived from `textStyle`.
  * @param strikethroughTextStyle Default style for strikethrough text, derived from `textStyle`.
  * @param linkColor Color for links, defaults to `MaterialTheme.colorScheme.primary`.
- * @param codeBlockBackgroundColor Background color for code blocks container, defaults to surface variant.
- * @param codeTextAreaBackgroundColor Background color for the code text area itself, defaults to semi-transparent onSurface.
- * @param blockQuoteVerticalBarColor Color for the vertical bar in block quotes, defaults to a contrasting color.
+ * @param codeBlockContainerBackgroundColor Background color for the entire code block (` ``` `) container, defaults to surface variant.
+ * @param codeBlockTextAreaBackgroundColor Background color *inside* the code block, behind the text, defaults to slightly transparent onSurface.
+ * @param inlineCodeBackgroundColor Background color for inline code (` `), defaults to semi-transparent tertiary container.
+ * @param inlineCodeTextColor Text color for inline code (` `), defaults to onTertiaryContainer.
+ * @param blockQuoteVerticalBarColor Color for the vertical bar in block quotes, defaults to `outline`.
  * @param blockQuoteBackgroundColor Background color for block quotes, defaults to transparent.
- * @param dividerColor Color for horizontal rules, defaults to `MaterialTheme.colorScheme.outline`.
- * @param tableBorderColor Color for table borders, defaults to `MaterialTheme.colorScheme.outline`.
+ * @param dividerColor Color for horizontal rules, defaults to `outline`.
+ * @param tableBorderColor Color for table borders, defaults to `outline`.
  */
 @Composable
 fun defaultMarkdownStyleSheet(
@@ -141,8 +145,10 @@ fun defaultMarkdownStyleSheet(
     italicTextStyle: TextStyle = textStyle.copy(fontStyle = FontStyle.Italic),
     strikethroughTextStyle: TextStyle = textStyle.copy(textDecoration = TextDecoration.LineThrough),
     linkColor: Color = MaterialTheme.colorScheme.primary,
-    codeBlockBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant, // Outer background
-    codeTextAreaBackgroundColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), // Inner code bg
+    codeBlockContainerBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    codeBlockTextAreaBackgroundColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+    inlineCodeBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+    inlineCodeTextColor: Color = MaterialTheme.colorScheme.onSurface,
     blockQuoteVerticalBarColor: Color = MaterialTheme.colorScheme.outline,
     blockQuoteBackgroundColor: Color = Color.Transparent,
     dividerColor: Color = MaterialTheme.colorScheme.outline,
@@ -157,6 +163,13 @@ fun defaultMarkdownStyleSheet(
     val languageLabelTextStyleResolved = defaultLabelSmallStyle.copy(color = onSurfaceVariantColor)
     val infoBarTextStyleResolved = defaultLabelSmallStyle.copy(color = subtleTextColor)
 
+    // Define inlineCodeStyle using provided params or defaults
+    val resolvedInlineCodeStyle = SpanStyle(
+        fontFamily = FontFamily.Monospace,
+        background = inlineCodeBackgroundColor,
+        color = inlineCodeTextColor,
+        fontSize = baseTextStyle.fontSize * 0.9
+    )
 
     return remember(
         baseTextStyle,
@@ -164,8 +177,9 @@ fun defaultMarkdownStyleSheet(
         italicTextStyle,
         strikethroughTextStyle,
         linkColor,
-        codeBlockBackgroundColor,
-        codeTextAreaBackgroundColor,
+        codeBlockContainerBackgroundColor,
+        codeBlockTextAreaBackgroundColor,
+        resolvedInlineCodeStyle,
         blockQuoteVerticalBarColor,
         blockQuoteBackgroundColor,
         dividerColor,
@@ -199,25 +213,21 @@ fun defaultMarkdownStyleSheet(
                 padding = 8.dp,
                 backgroundColor = blockQuoteBackgroundColor
             ),
-            inlineCodeStyle = SpanStyle(
-                fontFamily = FontFamily.Monospace,
-                background = codeTextAreaBackgroundColor,
-                color = baseTextStyle.color.copy(alpha = 0.8f)
-            ),
+            inlineCodeStyle = resolvedInlineCodeStyle,
             codeBlockStyle = CodeBlockStyle(
                 textStyle = codeTextStyle,
                 modifier = Modifier,
                 contentPadding = PaddingValues(8.dp),
-                codeBackground = codeTextAreaBackgroundColor,
-                // Language Label
+                codeBackground = codeBlockTextAreaBackgroundColor,
+                // Language Label (Top)
                 showLanguageLabel = true,
                 languageLabelTextStyle = languageLabelTextStyleResolved,
-                languageLabelBackground = codeBlockBackgroundColor,
+                languageLabelBackground = codeBlockContainerBackgroundColor,
                 languageLabelPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                // Info Bar
+                // Info Bar (Bottom)
                 showInfoBar = true,
                 infoBarTextStyle = infoBarTextStyleResolved,
-                infoBarBackground = codeBlockBackgroundColor,
+                infoBarBackground = codeBlockContainerBackgroundColor,
                 infoBarPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                 showCopyButton = true,
                 copyIconTint = onSurfaceVariantColor,
