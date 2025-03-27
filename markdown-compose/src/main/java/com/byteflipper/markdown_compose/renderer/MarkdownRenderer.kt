@@ -10,7 +10,7 @@ private const val TAG = "MarkdownRenderer"
 
 /**
  * Object responsible for rendering a list of MarkdownNode objects into an AnnotatedString using
- * a provided MarkdownStyleSheet. Supports various Markdown elements.
+ * a provided MarkdownStyleSheet. Supports various Markdown elements. Primarily for inline/text elements.
  */
 object MarkdownRenderer {
 
@@ -38,6 +38,7 @@ object MarkdownRenderer {
      */
     fun renderNode(builder: AnnotatedString.Builder, node: MarkdownNode, styleSheet: MarkdownStyleSheet) {
         when (node) {
+            // Text and Inline Styles
             is HeaderNode -> Header.render(builder, node, styleSheet)
             is BlockQuoteNode -> BlockQuote.render(builder, node, styleSheet)
             is ListItemNode -> ListItem.render(builder, node, styleSheet)
@@ -49,17 +50,13 @@ object MarkdownRenderer {
             is LineBreakNode -> builder.append("\n")
             is TextNode -> Text.render(builder, node, styleSheet)
 
-            // Block elements handled directly by MarkdownText composable or specific renderers
             is HorizontalRuleNode -> {
                 // Intentionally left blank - Handled by HorizontalRule.Render composable
             }
             is TableNode -> {
-                // Intentionally left blank - Handled by Table.RenderTable composable
-                // Could append placeholder text if needed for debugging AnnotatedString output
                 builder.append("[Table Placeholder: ${(node.rows.size)} rows x ${node.columnAlignments.size} cols]")
                 Log.d(TAG, "TableNode encountered in AnnotatedString render - should be handled by Table.RenderTable.")
             }
-            // Table cell/row shouldn't be rendered directly here
             is TableCellNode, is TableRowNode -> {
                 Log.w(TAG, "TableCellNode or TableRowNode encountered unexpectedly in AnnotatedString render.")
             }

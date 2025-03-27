@@ -21,7 +21,12 @@ data class ItalicTextNode(val text: String) : MarkdownNode
 data class StrikethroughTextNode(val text: String) : MarkdownNode
 data class TextNode(val text: String) : MarkdownNode
 data class LinkNode(val text: String, val url: String) : MarkdownNode
-data class CodeNode(val code: String) : MarkdownNode
+
+data class CodeNode(
+    val code: String,
+    val language: String? = null,
+    val isBlock: Boolean = false
+) : MarkdownNode
 
 enum class ColumnAlignment {
     LEFT,

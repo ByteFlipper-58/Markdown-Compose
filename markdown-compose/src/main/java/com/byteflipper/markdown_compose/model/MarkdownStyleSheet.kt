@@ -1,9 +1,13 @@
+// FILE: markdown-compose/src/main/java/com/byteflipper/markdown_compose/model/MarkdownStyleSheet.kt
+// @Modification: Moved MaterialTheme access outside the 'remember' lambda to fix the composable context error.
 package com.byteflipper.markdown_compose.model
 
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.MaterialTheme // Keep this import
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.takeOrElse
@@ -48,9 +52,27 @@ data class BlockQuoteStyle(
 @Immutable
 data class CodeBlockStyle(
     val textStyle: TextStyle,
-    val padding: Dp,
-    val backgroundColor: Color
+    val modifier: Modifier = Modifier,
+    val contentPadding: PaddingValues = PaddingValues(8.dp),
+    val codeBackground: Color,
+
+    // Top Language Label
+    val showLanguageLabel: Boolean = true,
+    val languageLabelTextStyle: TextStyle,
+    val languageLabelBackground: Color,
+    val languageLabelPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+
+    // Bottom Info Bar
+    val showInfoBar: Boolean = true,
+    val infoBarTextStyle: TextStyle,
+    val infoBarBackground: Color,
+    val infoBarPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+    val showCopyButton: Boolean = true,
+    val copyIconTint: Color,
+    val showLineCount: Boolean = true,
+    val showCharCount: Boolean = true
 )
+
 
 @Immutable
 data class TableStyle(
@@ -89,6 +111,7 @@ data class MarkdownStyleSheet(
     val listStyle: ListStyle,
     val blockQuoteStyle: BlockQuoteStyle,
     val codeBlockStyle: CodeBlockStyle,
+    val inlineCodeStyle: SpanStyle,
     val tableStyle: TableStyle,
     val horizontalRuleStyle: HorizontalRuleStyle,
     val linkStyle: LinkStyle,
@@ -104,7 +127,8 @@ data class MarkdownStyleSheet(
  * @param italicTextStyle Default style for italic text, derived from `textStyle`.
  * @param strikethroughTextStyle Default style for strikethrough text, derived from `textStyle`.
  * @param linkColor Color for links, defaults to `MaterialTheme.colorScheme.primary`.
- * @param codeBackgroundColor Background color for code blocks, defaults to a semi-transparent gray.
+ * @param codeBlockBackgroundColor Background color for code blocks container, defaults to surface variant.
+ * @param codeTextAreaBackgroundColor Background color for the code text area itself, defaults to semi-transparent onSurface.
  * @param blockQuoteVerticalBarColor Color for the vertical bar in block quotes, defaults to a contrasting color.
  * @param blockQuoteBackgroundColor Background color for block quotes, defaults to transparent.
  * @param dividerColor Color for horizontal rules, defaults to `MaterialTheme.colorScheme.outline`.
@@ -117,7 +141,8 @@ fun defaultMarkdownStyleSheet(
     italicTextStyle: TextStyle = textStyle.copy(fontStyle = FontStyle.Italic),
     strikethroughTextStyle: TextStyle = textStyle.copy(textDecoration = TextDecoration.LineThrough),
     linkColor: Color = MaterialTheme.colorScheme.primary,
-    codeBackgroundColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+    codeBlockBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant, // Outer background
+    codeTextAreaBackgroundColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), // Inner code bg
     blockQuoteVerticalBarColor: Color = MaterialTheme.colorScheme.outline,
     blockQuoteBackgroundColor: Color = Color.Transparent,
     dividerColor: Color = MaterialTheme.colorScheme.outline,
@@ -125,6 +150,13 @@ fun defaultMarkdownStyleSheet(
 ): MarkdownStyleSheet {
     val resolvedTextColor = textStyle.color.takeOrElse { MaterialTheme.colorScheme.onSurface }
     val baseTextStyle = textStyle.copy(color = resolvedTextColor)
+    val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val subtleTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    val codeTextStyle = baseTextStyle.copy(fontFamily = FontFamily.Monospace)
+    val defaultLabelSmallStyle = MaterialTheme.typography.labelSmall
+    val languageLabelTextStyleResolved = defaultLabelSmallStyle.copy(color = onSurfaceVariantColor)
+    val infoBarTextStyleResolved = defaultLabelSmallStyle.copy(color = subtleTextColor)
+
 
     return remember(
         baseTextStyle,
@@ -132,11 +164,15 @@ fun defaultMarkdownStyleSheet(
         italicTextStyle,
         strikethroughTextStyle,
         linkColor,
-        codeBackgroundColor,
+        codeBlockBackgroundColor,
+        codeTextAreaBackgroundColor,
         blockQuoteVerticalBarColor,
         blockQuoteBackgroundColor,
         dividerColor,
-        tableBorderColor
+        tableBorderColor,
+        onSurfaceVariantColor,
+        languageLabelTextStyleResolved,
+        infoBarTextStyleResolved
     ) {
         MarkdownStyleSheet(
             textStyle = baseTextStyle,
@@ -157,16 +193,36 @@ fun defaultMarkdownStyleSheet(
                 itemSpacing = 4.dp
             ),
             blockQuoteStyle = BlockQuoteStyle(
-                textStyle = baseTextStyle.copy(fontStyle = FontStyle.Italic), // Default italic for quotes
+                textStyle = baseTextStyle.copy(fontStyle = FontStyle.Italic),
                 verticalBarColor = blockQuoteVerticalBarColor,
                 verticalBarWidth = 4.dp,
                 padding = 8.dp,
                 backgroundColor = blockQuoteBackgroundColor
             ),
+            inlineCodeStyle = SpanStyle(
+                fontFamily = FontFamily.Monospace,
+                background = codeTextAreaBackgroundColor,
+                color = baseTextStyle.color.copy(alpha = 0.8f)
+            ),
             codeBlockStyle = CodeBlockStyle(
-                textStyle = baseTextStyle.merge(TextStyle(fontFamily = FontFamily.Monospace)),
-                padding = 8.dp,
-                backgroundColor = codeBackgroundColor
+                textStyle = codeTextStyle,
+                modifier = Modifier,
+                contentPadding = PaddingValues(8.dp),
+                codeBackground = codeTextAreaBackgroundColor,
+                // Language Label
+                showLanguageLabel = true,
+                languageLabelTextStyle = languageLabelTextStyleResolved,
+                languageLabelBackground = codeBlockBackgroundColor,
+                languageLabelPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                // Info Bar
+                showInfoBar = true,
+                infoBarTextStyle = infoBarTextStyleResolved,
+                infoBarBackground = codeBlockBackgroundColor,
+                infoBarPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                showCopyButton = true,
+                copyIconTint = onSurfaceVariantColor,
+                showLineCount = true,
+                showCharCount = true
             ),
             tableStyle = TableStyle(
                 cellPadding = 8.dp,
