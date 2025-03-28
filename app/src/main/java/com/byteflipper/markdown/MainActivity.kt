@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -98,6 +99,14 @@ fun CustomMarkdownView() {
             indentPadding = 12.dp, // More indent for nested lists
             bulletChars = listOf("* ", "+ ", "- "), // Different bullet styles
             itemSpacing = 6.dp // Slightly more space between list items
+
+        ),
+        taskListItemStyle = defaults.taskListItemStyle.copy(
+            checkedTextStyle = SpanStyle( // Custom style for checked items text
+                textDecoration = TextDecoration.LineThrough,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) // Dimmer color
+            )
+            // uncheckedTextStyle remains null (inherits from baseTextStyle)
         ),
         tableStyle = defaults.tableStyle.copy(
             borderColor = MaterialTheme.colorScheme.primary,
@@ -137,7 +146,6 @@ fun CustomMarkdownView() {
         // --- Inline Code Style (using existing property) ---
         inlineCodeStyle = defaults.inlineCodeStyle.copy(
             background = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
-            color = MaterialTheme.colorScheme.onTertiaryContainer
         ),
         linkStyle = defaults.linkStyle.copy(
             color = MaterialTheme.colorScheme.secondary,
@@ -192,6 +200,13 @@ object SampleMarkdown {
             1. Вложенный нумерованный 1
             2. Вложенный нумерованный 2
         3. Третий пункт
+        
+        **Списки задач (Checkboxes):**
+        - [x] Завершённая задача
+        - [ ] Невыполненная задача
+        - [X] Другая завершённая (Caps X)
+            - [ ] Вложенная невыполненная
+            - [x] Вложенная выполненная
 
         [Ссылка на ByteFlipper](https://byteflipper.web.app/)
 

@@ -1,7 +1,7 @@
 package com.byteflipper.markdown_compose.model
 
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.MaterialTheme // Keep this import
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/** Styles for H1-H6 headers and spacing after them. */
 @Immutable
 data class HeaderStyle(
     val h1: TextStyle,
@@ -30,6 +31,7 @@ data class HeaderStyle(
     val bottomPadding: Dp
 )
 
+/** Styles for ordered and unordered lists. */
 @Immutable
 data class ListStyle(
     val bulletChars: List<String> = listOf("•", "◦", "▪"),
@@ -38,6 +40,31 @@ data class ListStyle(
     val itemSpacing: Dp
 )
 
+/**
+ * Defines styling for task list items ([x], [ ]). Includes styles for both the text
+ * content and the checkbox appearance.
+ */
+@Immutable
+data class TaskListItemStyle(
+    /** Style applied to the text when the checkbox is checked (e.g., strikethrough, dim color). */
+    val checkedTextStyle: SpanStyle? = null,
+    /** Style applied to the text when the checkbox is unchecked (usually null to inherit default). */
+    val uncheckedTextStyle: SpanStyle? = null,
+
+    // --- Styles for the Checkbox Composable (applied via CheckboxDefaults.colors) ---
+    /** The color of the checkmark symbol itself when checked. */
+    val checkedCheckboxIndicatorColor: Color? = null,
+    /** The background fill color of the checkbox square when checked. */
+    val checkedCheckboxContainerColor: Color? = null,
+    /** The border color of the checkbox square when unchecked. */
+    val uncheckedCheckboxBorderColor: Color? = null,
+    /** The color of the checkmark symbol when disabled (reflecting checked state). */
+    val disabledCheckboxIndicatorColor: Color? = null,
+    /** The background/border color of the checkbox square when disabled (can reflect checked/unchecked). */
+    val disabledCheckboxContainerColor: Color? = null,
+)
+
+/** Styles for > block quotes. */
 @Immutable
 data class BlockQuoteStyle(
     val textStyle: TextStyle,
@@ -47,6 +74,7 @@ data class BlockQuoteStyle(
     val backgroundColor: Color? = null
 )
 
+/** Styles for ``` code blocks ```. */
 @Immutable
 data class CodeBlockStyle(
     val textStyle: TextStyle,
@@ -54,7 +82,7 @@ data class CodeBlockStyle(
     val contentPadding: PaddingValues = PaddingValues(8.dp),
     val codeBackground: Color,
 
-    // Top Language Label
+    // Top Language Label Bar
     val showLanguageLabel: Boolean = true,
     val languageLabelTextStyle: TextStyle,
     val languageLabelBackground: Color,
@@ -71,7 +99,7 @@ data class CodeBlockStyle(
     val showCharCount: Boolean = true
 )
 
-
+/** Styles for | tables |. */
 @Immutable
 data class TableStyle(
     val cellPadding: Dp = 8.dp,
@@ -80,28 +108,25 @@ data class TableStyle(
     val outerBorderShape: Shape? = null
 )
 
+/** Styles for --- horizontal rules. */
 @Immutable
 data class HorizontalRuleStyle(
     val color: Color,
     val thickness: Dp = 1.dp
 )
 
+/** Styles for [links](...). */
 @Immutable
 data class LinkStyle(
     val textDecoration: TextDecoration? = TextDecoration.Underline,
     val color: Color
 )
 
-
 /**
- * Defines the visual styling for rendering Markdown content.
+ * Defines the visual styling for rendering Markdown content using Jetpack Compose.
+ * Provides customization options for various Markdown elements like headers, lists, code blocks, etc.
  *
- * Provides customization options for various Markdown elements.
- * A default implementation based on MaterialTheme can be obtained using `defaultMarkdownStyleSheet()`.
- *
- * Note on `inlineCodeStyle`: This uses `SpanStyle`, which styles the text itself (font, color, background *within the line*, etc.).
- * It cannot add padding *around* the text or create rounded corners for the background distinct from the text line.
- * For visual distinction, customize the `background` and `color` properties.
+ * Obtain a default theme-based instance using [defaultMarkdownStyleSheet]. Customize it using the `copy()` method.
  */
 @Immutable
 data class MarkdownStyleSheet(
@@ -111,6 +136,7 @@ data class MarkdownStyleSheet(
     val strikethroughTextStyle: TextStyle,
     val headerStyle: HeaderStyle,
     val listStyle: ListStyle,
+    val taskListItemStyle: TaskListItemStyle,
     val blockQuoteStyle: BlockQuoteStyle,
     val codeBlockStyle: CodeBlockStyle,
     val inlineCodeStyle: SpanStyle,
@@ -122,48 +148,65 @@ data class MarkdownStyleSheet(
 )
 
 /**
- * Creates a default [MarkdownStyleSheet] based on the current MaterialTheme.
+ * Creates a default [MarkdownStyleSheet] based on the current MaterialTheme values.
+ * This function provides sensible defaults derived from the active color scheme and typography.
+ * You can override specific defaults by passing arguments or modify the returned sheet using `copy()`.
  *
- * @param textStyle Default text style, defaults to `MaterialTheme.typography.bodyMedium`.
- * @param boldTextStyle Default style for bold text, derived from `textStyle`.
- * @param italicTextStyle Default style for italic text, derived from `textStyle`.
- * @param strikethroughTextStyle Default style for strikethrough text, derived from `textStyle`.
- * @param linkColor Color for links, defaults to `MaterialTheme.colorScheme.primary`.
- * @param codeBlockContainerBackgroundColor Background color for the entire code block (` ``` `) container, defaults to surface variant.
- * @param codeBlockTextAreaBackgroundColor Background color *inside* the code block, behind the text, defaults to slightly transparent onSurface.
- * @param inlineCodeBackgroundColor Background color for inline code (` `), defaults to semi-transparent tertiary container.
- * @param inlineCodeTextColor Text color for inline code (` `), defaults to onTertiaryContainer.
- * @param blockQuoteVerticalBarColor Color for the vertical bar in block quotes, defaults to `outline`.
- * @param blockQuoteBackgroundColor Background color for block quotes, defaults to transparent.
- * @param dividerColor Color for horizontal rules, defaults to `outline`.
- * @param tableBorderColor Color for table borders, defaults to `outline`.
+ * @param textStyle Base text style (defaults to MaterialTheme.typography.bodyMedium).
+ * @param boldTextStyle Style for bold text.
+ * @param italicTextStyle Style for italic text.
+ * @param strikethroughTextStyle Style for strikethrough text.
+ * @param linkColor Default color for links.
+ * @param codeBlockContainerBackgroundColor Background for code block top/bottom bars.
+ * @param codeBlockTextAreaBackgroundColor Background for the main code text area.
+ * @param inlineCodeBackgroundColor Background color for `inline code` spans.
+ * @param inlineCodeTextColor Text color for `inline code` spans.
+ * @param blockQuoteVerticalBarColor Color for the vertical bar on block quotes.
+ * @param blockQuoteBackgroundColor Optional background color for block quotes.
+ * @param dividerColor Color for horizontal rules (`---`).
+ * @param tableBorderColor Color for table cell borders.
+ * @param checkedTaskItemTextColor Color for the *text* of checked task list items. Defaults to a neutral outline color.
+ * @param checkedCheckboxIndicatorColor Color for the checkmark when checked. Defaults to onPrimary.
+ * @param checkedCheckboxContainerColor Color for the checkbox background when checked. Defaults to primary.
+ * @param uncheckedCheckboxBorderColor Color for the checkbox border when unchecked. Defaults to outline.
+ * @param disabledCheckboxIndicatorColor Color for the checkmark when disabled (as task checkboxes are). Defaults to `checkedTaskItemTextColor`.
+ * @param disabledCheckboxContainerColor Color for the checkbox background/border when disabled. Defaults to `checkedTaskItemTextColor`.
+ * @return A remembered [MarkdownStyleSheet] instance with default values.
  */
 @Composable
 fun defaultMarkdownStyleSheet(
+    // --- Base & Inline Text Styles ---
     textStyle: TextStyle = MaterialTheme.typography.bodyMedium,
     boldTextStyle: TextStyle = textStyle.copy(fontWeight = FontWeight.Bold),
-    italicTextStyle: TextStyle = textStyle.copy(fontStyle = FontStyle.Italic),
+    italicTextStyle: TextStyle = textStyle.copy(fontStyle = FontStyle.Italic, fontFamily = FontFamily.Cursive),
     strikethroughTextStyle: TextStyle = textStyle.copy(textDecoration = TextDecoration.LineThrough),
-    linkColor: Color = MaterialTheme.colorScheme.primary,
-    codeBlockContainerBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant,
-    codeBlockTextAreaBackgroundColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
     inlineCodeBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
     inlineCodeTextColor: Color = MaterialTheme.colorScheme.onSurface,
+    linkColor: Color = MaterialTheme.colorScheme.primary,
+    // --- Block Element Colors ---
+    codeBlockContainerBackgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant, // Bars
+    codeBlockTextAreaBackgroundColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), // Text area BG
     blockQuoteVerticalBarColor: Color = MaterialTheme.colorScheme.outline,
     blockQuoteBackgroundColor: Color = Color.Transparent,
     dividerColor: Color = MaterialTheme.colorScheme.outline,
-    tableBorderColor: Color = MaterialTheme.colorScheme.outline
+    tableBorderColor: Color = MaterialTheme.colorScheme.outline,
+    // --- Task Item Styles (Text & Checkbox) ---
+    checkedTaskItemTextColor: Color = MaterialTheme.colorScheme.outline,
+    checkedCheckboxIndicatorColor: Color = MaterialTheme.colorScheme.onPrimary,
+    checkedCheckboxContainerColor: Color = MaterialTheme.colorScheme.primary,
+    uncheckedCheckboxBorderColor: Color = MaterialTheme.colorScheme.outline,
+    disabledCheckboxIndicatorColor: Color = checkedTaskItemTextColor,
+    disabledCheckboxContainerColor: Color = checkedTaskItemTextColor
 ): MarkdownStyleSheet {
     val resolvedTextColor = textStyle.color.takeOrElse { MaterialTheme.colorScheme.onSurface }
     val baseTextStyle = textStyle.copy(color = resolvedTextColor)
+
     val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val subtleTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
     val codeTextStyle = baseTextStyle.copy(fontFamily = FontFamily.Monospace)
     val defaultLabelSmallStyle = MaterialTheme.typography.labelSmall
     val languageLabelTextStyleResolved = defaultLabelSmallStyle.copy(color = onSurfaceVariantColor)
-    val infoBarTextStyleResolved = defaultLabelSmallStyle.copy(color = subtleTextColor)
+    val infoBarTextStyleResolved = defaultLabelSmallStyle.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
 
-    // Define inlineCodeStyle using provided params or defaults
     val resolvedInlineCodeStyle = SpanStyle(
         fontFamily = FontFamily.Monospace,
         background = inlineCodeBackgroundColor,
@@ -171,28 +214,33 @@ fun defaultMarkdownStyleSheet(
         fontSize = baseTextStyle.fontSize * 0.9
     )
 
+    val defaultCheckedTaskItemTextStyle = SpanStyle(
+        textDecoration = TextDecoration.LineThrough,
+        color = checkedTaskItemTextColor
+    )
+
     return remember(
-        baseTextStyle,
-        boldTextStyle,
-        italicTextStyle,
-        strikethroughTextStyle,
-        linkColor,
-        codeBlockContainerBackgroundColor,
-        codeBlockTextAreaBackgroundColor,
-        resolvedInlineCodeStyle,
-        blockQuoteVerticalBarColor,
-        blockQuoteBackgroundColor,
-        dividerColor,
-        tableBorderColor,
-        onSurfaceVariantColor,
-        languageLabelTextStyleResolved,
-        infoBarTextStyleResolved
+        textStyle, boldTextStyle, italicTextStyle, strikethroughTextStyle,
+        inlineCodeBackgroundColor, inlineCodeTextColor, linkColor,
+        codeBlockContainerBackgroundColor, codeBlockTextAreaBackgroundColor,
+        blockQuoteVerticalBarColor, blockQuoteBackgroundColor, dividerColor, tableBorderColor,
+        checkedTaskItemTextColor,
+        checkedCheckboxIndicatorColor, checkedCheckboxContainerColor,
+        uncheckedCheckboxBorderColor, disabledCheckboxIndicatorColor, disabledCheckboxContainerColor,
+        baseTextStyle, onSurfaceVariantColor, codeTextStyle, defaultLabelSmallStyle,
+        languageLabelTextStyleResolved, infoBarTextStyleResolved,
+        resolvedInlineCodeStyle, defaultCheckedTaskItemTextStyle
     ) {
         MarkdownStyleSheet(
             textStyle = baseTextStyle,
             boldTextStyle = boldTextStyle.merge(TextStyle(color = baseTextStyle.color)),
-            italicTextStyle = italicTextStyle.merge(TextStyle(color = baseTextStyle.color, fontStyle = FontStyle.Italic, fontFamily = FontFamily.Cursive)),
+            italicTextStyle = italicTextStyle.merge(TextStyle(color = baseTextStyle.color)),
             strikethroughTextStyle = strikethroughTextStyle.merge(TextStyle(color = baseTextStyle.color)),
+            inlineCodeStyle = resolvedInlineCodeStyle,
+            linkStyle = LinkStyle(
+                textDecoration = TextDecoration.Underline,
+                color = linkColor
+            ),
             headerStyle = HeaderStyle(
                 h1 = baseTextStyle.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold),
                 h2 = baseTextStyle.copy(fontSize = 28.sp, fontWeight = FontWeight.Bold),
@@ -206,6 +254,15 @@ fun defaultMarkdownStyleSheet(
                 indentPadding = 8.dp,
                 itemSpacing = 4.dp
             ),
+            taskListItemStyle = TaskListItemStyle(
+                checkedTextStyle = defaultCheckedTaskItemTextStyle,
+                uncheckedTextStyle = null,
+                checkedCheckboxIndicatorColor = checkedCheckboxIndicatorColor,
+                checkedCheckboxContainerColor = checkedCheckboxContainerColor,
+                uncheckedCheckboxBorderColor = uncheckedCheckboxBorderColor,
+                disabledCheckboxIndicatorColor = disabledCheckboxIndicatorColor,
+                disabledCheckboxContainerColor = disabledCheckboxContainerColor
+            ),
             blockQuoteStyle = BlockQuoteStyle(
                 textStyle = baseTextStyle.copy(fontStyle = FontStyle.Italic),
                 verticalBarColor = blockQuoteVerticalBarColor,
@@ -213,18 +270,15 @@ fun defaultMarkdownStyleSheet(
                 padding = 8.dp,
                 backgroundColor = blockQuoteBackgroundColor
             ),
-            inlineCodeStyle = resolvedInlineCodeStyle,
             codeBlockStyle = CodeBlockStyle(
                 textStyle = codeTextStyle,
                 modifier = Modifier,
                 contentPadding = PaddingValues(8.dp),
                 codeBackground = codeBlockTextAreaBackgroundColor,
-                // Language Label (Top)
                 showLanguageLabel = true,
                 languageLabelTextStyle = languageLabelTextStyleResolved,
                 languageLabelBackground = codeBlockContainerBackgroundColor,
                 languageLabelPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                // Info Bar (Bottom)
                 showInfoBar = true,
                 infoBarTextStyle = infoBarTextStyleResolved,
                 infoBarBackground = codeBlockContainerBackgroundColor,
@@ -244,12 +298,8 @@ fun defaultMarkdownStyleSheet(
                 color = dividerColor,
                 thickness = 1.dp
             ),
-            linkStyle = LinkStyle(
-                textDecoration = TextDecoration.Underline,
-                color = linkColor
-            ),
             blockSpacing = 16.dp,
-            lineBreakSpacing = 16.dp
+            lineBreakSpacing = 8.dp
         )
     }
 }

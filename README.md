@@ -12,6 +12,7 @@
 - Списки:
     - Маркированные (неупорядоченные) (`-`, `*`, `+`)
     - Нумерованные (упорядоченные) (`1.`, `2.`, ...)
+    - ✅ **Списки задач (Checkboxes)** (`- [ ] текст`, `- [x] текст`) с настраиваемым внешним видом текста и самого `Checkbox`.
     - Вложенные списки (с настраиваемыми отступами)
 - Ссылки (`[текст](URL)`)
 - **Жирный текст** (`**текст**` или `__текст__`)
@@ -58,6 +59,10 @@ MarkdownText(
         - Пункт 2
             - Вложенный пункт
 
+        **Список задач:**
+        - [x] Что-то сделано
+        - [ ] Что-то нужно сделать
+
         [Больше информации](https://...)
 
         Простой блок кода:
@@ -102,46 +107,77 @@ MarkdownText(
 // ... внутри вашего Composable
 
 // Получаем стили по умолчанию
-val defaultStyles = defaultMarkdownStyleSheet()
+val defaults = defaultMarkdownStyleSheet()
 
-// Создаем кастомный стиль на основе дефолтного
-val customStyleSheet = defaultStyles.copy(
+val customStyleSheet = defaults.copy(
     // Изменяем базовый стиль текста
-    textStyle = defaultStyles.textStyle.copy(fontSize = 15.sp, lineHeight = 22.sp),
-    // Изменяем стили заголовков
-    headerStyle = defaultStyles.headerStyle.copy(
-        h1 = defaultStyles.headerStyle.h1.copy(color = MaterialTheme.colorScheme.tertiary),
-        h2 = defaultStyles.headerStyle.h2.copy(color = MaterialTheme.colorScheme.secondary, fontSize = 26.sp),
-        bottomPadding = 10.dp // Отступ после заголовков
+    textStyle = defaults.textStyle.copy(fontSize = 15.sp, lineHeight = 22.sp),
+    
+  // Изменяем стили заголовков
+    headerStyle = defaults.headerStyle.copy(
+        h1 = defaults.headerStyle.h1.copy(color = MaterialTheme.colorScheme.tertiary),
+        h2 = defaults.headerStyle.h2.copy(color = MaterialTheme.colorScheme.secondary, fontSize = 26.sp),
+        bottomPadding = 10.dp
     ),
-    // Настраиваем списки
-    listStyle = defaultStyles.listStyle.copy(
-        indentPadding = 12.dp, // Увеличиваем отступ для вложенности
-        bulletChars = listOf("* ", "+ ", "- ") // Используем другие символы маркеров
+    
+  // Настраиваем списки
+    listStyle = defaults.listStyle.copy(
+        indentPadding = 12.dp,
+        bulletChars = listOf("* ", "+ ", "- ")
     ),
-    // Настраиваем таблицы
-    tableStyle = defaultStyles.tableStyle.copy(
+    
+  // --- Настраиваем СПИСКИ ЗАДАЧ (Чекбоксы) ---
+    taskListItemStyle = defaults.taskListItemStyle.copy(
+        // Стиль ТЕКСТА для выполненных задач (например, серый + зачеркнутый)
+        checkedTextStyle = SpanStyle(
+            color = MaterialTheme.colorScheme.outline, // Нейтральный цвет для текста выполненного пункта
+            textDecoration = TextDecoration.LineThrough
+        ),
+        
+      // Стиль ТЕКСТА для невыполненных (null означает наследование от textStyle)
+        // uncheckedTextStyle = SpanStyle(...)
+
+        // --- Настройка ЦВЕТОВ самого Checkbox ---
+        // Цвет заливки квадратика Checkbox при ВЫПОЛНЕНИИ
+        checkedCheckboxContainerColor = MaterialTheme.colorScheme.secondary,
+        // Цвет ГАЛОЧКИ внутри Checkbox при ВЫПОЛНЕНИИ
+        checkedCheckboxIndicatorColor = MaterialTheme.colorScheme.onSecondary,
+        // Цвет РАМКИ Checkbox при НЕВЫПОЛНЕНИИ
+        uncheckedCheckboxBorderColor = MaterialTheme.colorScheme.secondary,
+
+        // ВАЖНО: Checkbox рендерится в состоянии disabled (т.к. он read-only из Markdown).
+        // Вы можете настроить цвета и для этого состояния, если стандартные (затемненные) не подходят.
+        // По умолчанию они затемняются от enabled-цветов.
+        // disabledCheckboxContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha=0.5f),
+        // disabledCheckboxIndicatorColor = MaterialTheme.colorScheme.onSecondary.copy(alpha=0.5f)
+    ),
+    
+  // Настраиваем таблицы
+    tableStyle = defaults.tableStyle.copy(
         borderColor = MaterialTheme.colorScheme.primary,
         borderThickness = 2.dp, // Утолщаем границы
         cellPadding = 10.dp, // Увеличиваем отступы в ячейках
         outerBorderShape = RoundedCornerShape(8.dp) // Скругляем углы таблицы!
     ),
-    // Настраиваем разделитель
-    horizontalRuleStyle = defaultStyles.horizontalRuleStyle.copy(
+    
+  // Настраиваем разделитель
+    horizontalRuleStyle = defaults.horizontalRuleStyle.copy(
          color = MaterialTheme.colorScheme.error,
          thickness = 2.dp
     ),
-    // Настраиваем цитаты
-    blockQuoteStyle = defaultStyles.blockQuoteStyle.copy(
+    
+  // Настраиваем цитаты
+    blockQuoteStyle = defaults.blockQuoteStyle.copy(
         backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
         verticalBarColor = MaterialTheme.colorScheme.primary,
         verticalBarWidth = 6.dp,
         padding = 12.dp
     ),
-    // ---- Настраиваем БЛОКИ КОДА (` ``` `) ----
-    codeBlockStyle = defaultStyles.codeBlockStyle.copy(
+    
+  // ---- Настраиваем БЛОКИ КОДА (` ``` `) ----
+    codeBlockStyle = defaults.codeBlockStyle.copy(
         modifier = Modifier.clip(RoundedCornerShape(8.dp)),
-        textStyle = defaultStyles.codeBlockStyle.textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+        textStyle = defaults.codeBlockStyle.textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
         codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
         // Верхняя метка языка
         languageLabelTextStyle = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.primary),
@@ -155,17 +191,19 @@ val customStyleSheet = defaultStyles.copy(
         showLineCount = true,
         showCharCount = true
     ),
-    // ---- Настраиваем INLINE КОД (` `) ----
-    inlineCodeStyle = defaultStyles.inlineCodeStyle.copy(
+    
+  // ---- Настраиваем INLINE КОД (` `) ----
+    inlineCodeStyle = defaults.inlineCodeStyle.copy(
         background = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
         color = MaterialTheme.colorScheme.onTertiaryContainer
-        // Можно добавить fontSize = 13.sp и т.д.
     ),
-    // Настраиваем ссылки
-    linkStyle = defaultStyles.linkStyle.copy(
-        color = Color(0xFFB00020) // Ярко-красный цвет для ссылок
+    
+  // Настраиваем ссылки
+    linkStyle = defaults.linkStyle.copy(
+        color = Color(0xFFB00020)
     ),
-    // Настраиваем отступы между блоками
+    
+  // Настраиваем отступы между блоками
     blockSpacing = 20.dp
 )
 
@@ -182,6 +220,11 @@ MarkdownText(
         * Маркер списка '*'
             + Маркер списка '+'
                 - Маркер списка '-'
+
+        **Кастомные списки задач:**
+        - [x] Выполнено (Стиль текста изменен, Checkbox цвета Secondary)
+        - [ ] Не выполнено (Рамка Checkbox цвета Secondary)
+        - [x] Еще выполнено
 
         ```kotlin
         // Блок кода с меткой языка, кнопкой копирования и счетчиками
@@ -215,13 +258,19 @@ MarkdownText(
 *   `boldTextStyle`, `italicTextStyle`, `strikethroughTextStyle`: Стили для форматирования текста.
 *   `headerStyle`: Стили для заголовков (H1-H6) и отступа после них.
 *   `listStyle`: Маркеры, форматирование номеров, отступы и интервалы для списков.
+*   **`taskListItemStyle`**: Стили для элементов списка задач (`- [ ]`, `- [x]`). Позволяет настроить:
+  *   `checkedTextStyle`: Стиль (`SpanStyle`) для *текста* выполненного пункта (например, цвет, `TextDecoration.LineThrough`).
+  *   `uncheckedTextStyle`: Стиль (`SpanStyle`) для *текста* невыполненного пункта (по умолчанию `null` - наследует `textStyle`).
+  *   `checkedCheckboxIndicatorColor`, `checkedCheckboxContainerColor`: Цвета *самого Checkbox* для выполненного пункта (галочка и заливка).
+  *   `uncheckedCheckboxBorderColor`: Цвет рамки *Checkbox* для невыполненного пункта.
+  *   `disabledCheckboxIndicatorColor`, `disabledCheckboxContainerColor`: Цвета *Checkbox* в *отключенном* состоянии (так как Checkbox является read-only и всегда `enabled = false`). По умолчанию затемняются от enabled-цветов.
 *   `blockQuoteStyle`: Стиль текста, цвет/ширина вертикальной полосы, фон и отступы для цитат.
 *   `inlineCodeStyle`: Стиль (`SpanStyle`) для инлайн-кода (`` `code` ``), позволяет настроить фон, цвет текста, шрифт и т.д.
 *   `codeBlockStyle`: Полная настройка для блоков кода (`` ```code``` ``). Включает:
   *   `textStyle`: Стиль самого текста кода.
   *   `modifier`: Модификатор для всего блока (например, для скругления углов `Modifier.clip(...)`).
   *   `contentPadding`: Отступы вокруг текста кода внутри блока.
-  *   `codeBackground`: Цвет фона всего блока.
+  *   `codeBackground`: Цвет фона самого текста кода.
   *   `showLanguageLabel`, `languageLabelTextStyle`, `languageLabelBackground`, `languageLabelPadding`: Настройки верхней метки с языком программирования.
   *   `showInfoBar`, `infoBarTextStyle`, `infoBarBackground`, `infoBarPadding`: Настройки нижней инфо-панели.
   *   `showCopyButton`, `copyIconTint`: Настройки кнопки копирования.
