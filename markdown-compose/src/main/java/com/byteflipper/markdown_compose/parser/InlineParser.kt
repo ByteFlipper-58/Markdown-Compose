@@ -25,145 +25,148 @@ object InlineParser {
         val currentText = StringBuilder()
 
         while (currentIndex < length) {
-            val char = text[currentIndex]
-            val remainingText = text.substring(currentIndex)
-            Log.v(TAG, "Loop iteration: currentIndex=$currentIndex, char='$char', currentText=\"$currentText\"") // Verbose log
+            Log.v(TAG, "Loop iteration: currentIndex=$currentIndex, remaining='${text.substring(currentIndex)}', currentText=\"$currentText\"")
 
-            if (char == '`') {
-                Log.d(TAG, "Found potential opening backtick at index $currentIndex")
-                val end = findClosingTag(text, currentIndex + 1, "`")
-                if (end != -1) {
-                    Log.d(TAG, "Found closing backtick at index $end")
-                    flushText(currentText, nodes) // Flush any preceding text
-                    val codeContent = text.substring(currentIndex + 1, end)
-                    Log.i(TAG, ">>> Creating Inline CodeNode with content: \"$codeContent\"") // Important Log
-                    nodes.add(CodeNode(codeContent, isBlock = false))
-                    currentIndex = end + 1 // Move index past the closing backtick
-                    Log.d(TAG, "Advanced currentIndex to $currentIndex after code block.")
-                    continue
-                } else {
-                    Log.w(TAG, "Found opening backtick at $currentIndex but no closing backtick found. Treating as literal.")
-                }
-            }
-            else if (char == '[' && remainingText.startsWith("[")) {
-                val linkTextEnd = text.indexOf(']', currentIndex + 1)
-                if (linkTextEnd != -1 && linkTextEnd + 1 < length && text[linkTextEnd + 1] == '(') {
-                    val linkUrlEnd = text.indexOf(')', linkTextEnd + 2)
-                    if (linkUrlEnd != -1) {
-                        Log.d(TAG, "Found potential link structure.")
-                        flushText(currentText, nodes)
-                        val linkText = text.substring(currentIndex + 1, linkTextEnd)
-                        val linkUrl = text.substring(linkTextEnd + 2, linkUrlEnd)
-                        Log.i(TAG, ">>> Creating LinkNode: [$linkText]($linkUrl)")
-                        nodes.add(LinkNode(linkText, linkUrl))
-                        currentIndex = linkUrlEnd + 1
-                        Log.d(TAG, "Advanced currentIndex to $currentIndex after link.")
-                        continue
-                    } else {
-                        Log.d(TAG, "Found '[text](...' but missing closing parenthesis ')' for link.")
-                    }
-                } else {
-                    Log.d(TAG, "Found '[' but not a valid link structure '[text](url)'.")
-                }
-            }
-            else if (remainingText.startsWith("**")) {
-                Log.d(TAG, "Found potential opening bold '**' at $currentIndex")
-                val end = findClosingTag(text, currentIndex + 2, "**")
-                if (end != -1) {
-                    Log.d(TAG, "Found closing bold '**' at $end")
-                    flushText(currentText, nodes)
-                    val boldContent = text.substring(currentIndex + 2, end)
-                    Log.i(TAG, ">>> Creating BoldTextNode (double asterisk): \"$boldContent\"")
-                    nodes.add(BoldTextNode(boldContent))
-                    currentIndex = end + 2
-                    Log.d(TAG, "Advanced currentIndex to $currentIndex after bold.")
-                    continue
-                } else {
-                    Log.w(TAG, "Found opening bold '**' but no closing tag found. Treating as literal.")
-                }
-            }
-            else if (remainingText.startsWith("__")) {
-                Log.d(TAG, "Found potential opening bold '__' at $currentIndex")
-                val end = findClosingTag(text, currentIndex + 2, "__")
-                if (end != -1) {
-                    Log.d(TAG, "Found closing bold '__' at $end")
-                    flushText(currentText, nodes)
-                    val boldContent = text.substring(currentIndex + 2, end)
-                    Log.i(TAG, ">>> Creating BoldTextNode (double underscore): \"$boldContent\"")
-                    nodes.add(BoldTextNode(boldContent))
-                    currentIndex = end + 2
-                    Log.d(TAG, "Advanced currentIndex to $currentIndex after bold.")
-                    continue
-                } else {
-                    Log.w(TAG, "Found opening bold '__' but no closing tag found. Treating as literal.")
-                }
-            }
-            else if (char == '*' && !remainingText.startsWith("**")) { // Avoid matching bold
-                Log.d(TAG, "Found potential opening italic '*' at $currentIndex")
-                val end = findClosingTag(text, currentIndex + 1, "*")
-                if (end != -1) {
-                    Log.d(TAG, "Found closing italic '*' at $end")
-                    flushText(currentText, nodes)
-                    val italicContent = text.substring(currentIndex + 1, end)
-                    Log.i(TAG, ">>> Creating ItalicTextNode (single asterisk): \"$italicContent\"")
-                    nodes.add(ItalicTextNode(italicContent))
-                    currentIndex = end + 1
-                    Log.d(TAG, "Advanced currentIndex to $currentIndex after italic.")
-                    continue
-                } else {
-                    Log.w(TAG, "Found opening italic '*' but no closing tag found. Treating as literal.")
-                }
-            }
-            else if (char == '_' && !remainingText.startsWith("__")) { // Avoid matching bold
-                Log.d(TAG, "Found potential opening italic '_' at $currentIndex")
-                val end = findClosingTag(text, currentIndex + 1, "_")
-                if (end != -1) {
-                    Log.d(TAG, "Found closing italic '_' at $end")
-                    flushText(currentText, nodes)
-                    val italicContent = text.substring(currentIndex + 1, end)
-                    Log.i(TAG, ">>> Creating ItalicTextNode (single underscore): \"$italicContent\"")
-                    nodes.add(ItalicTextNode(italicContent))
-                    currentIndex = end + 1
-                    Log.d(TAG, "Advanced currentIndex to $currentIndex after italic.")
-                    continue
-                } else {
-                    Log.w(TAG, "Found opening italic '_' but no closing tag found. Treating as literal.")
-                }
+            var nodeParsed = false
+
+            // Try parsing different inline elements in order of potential precedence/complexity
+            tryParseCodeSpan(text, currentIndex)?.let { (node, nextIndex) ->
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: tryParseLink(text, currentIndex)?.let { (node, nextIndex) ->
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: tryParseStrikethrough(text, currentIndex)?.let { (node, nextIndex) ->
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: tryParseEmphasis(text, currentIndex, "**")?.let { (node, nextIndex) -> // Bold **
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: tryParseEmphasis(text, currentIndex, "__")?.let { (node, nextIndex) -> // Bold __
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: tryParseEmphasis(text, currentIndex, "*")?.let { (node, nextIndex) -> // Italic *
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: tryParseEmphasis(text, currentIndex, "_")?.let { (node, nextIndex) -> // Italic _
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
             }
 
-            else if (remainingText.startsWith("~~")) {
-                Log.d(TAG, "Found potential opening strikethrough '~~' at $currentIndex")
-                val end = findClosingTag(text, currentIndex + 2, "~~")
-                if (end != -1) {
-                    Log.d(TAG, "Found closing strikethrough '~~' at $end")
-                    flushText(currentText, nodes)
-                    val strikethroughContent = text.substring(currentIndex + 2, end)
-                    Log.i(TAG, ">>> Creating StrikethroughTextNode: \"$strikethroughContent\"")
-                    nodes.add(StrikethroughTextNode(strikethroughContent))
-                    currentIndex = end + 2
-                    Log.d(TAG, "Advanced currentIndex to $currentIndex after strikethrough.")
-                    continue
-                } else {
-                    Log.w(TAG, "Found opening strikethrough '~~' but no closing tag found. Treating as literal.")
-                }
+
+            if (!nodeParsed) {
+                // If no specific markdown element was parsed, append the character as plain text
+                currentText.append(text[currentIndex])
+                currentIndex++
             }
-
-            Log.v(TAG, "Appending literal char '$char' to currentText.")
-            currentText.append(char)
-            currentIndex++
-
-        }
+        } // End while loop
 
         flushText(currentText, nodes)
         Log.d(TAG, "--- Finished parseInline. Total nodes created: ${nodes.size} ---")
         return nodes
     }
 
+    // --- Private Parsing Helper Functions ---
+
+    private fun tryParseCodeSpan(text: String, startIndex: Int): Pair<CodeNode, Int>? {
+        if (startIndex >= text.length || text[startIndex] != '`') return null
+
+        val end = findClosingTag(text, startIndex + 1, "`")
+        if (end != -1) {
+            Log.d(TAG, "Found code span from $startIndex to $end")
+            val codeContent = text.substring(startIndex + 1, end)
+            val node = CodeNode(codeContent, isBlock = false)
+            return Pair(node, end + 1) // New index is after closing tag
+        } else {
+            Log.w(TAG, "Found opening backtick at $startIndex but no closing backtick found.")
+            return null
+        }
+    }
+
+    private fun tryParseLink(text: String, startIndex: Int): Pair<LinkNode, Int>? {
+        if (!text.startsWith("[", startIndex)) return null
+
+        val linkTextEnd = text.indexOf(']', startIndex + 1)
+        if (linkTextEnd == -1 || linkTextEnd + 1 >= text.length || text[linkTextEnd + 1] != '(') {
+            //Log.d(TAG, "Found '[' at $startIndex but not followed by '](...'")
+            return null // Not a link start
+        }
+
+        val linkUrlEnd = text.indexOf(')', linkTextEnd + 2)
+        if (linkUrlEnd == -1) {
+            Log.d(TAG, "Found '[text](...' at $startIndex but missing closing parenthesis ')' for link.")
+            return null
+        }
+
+        Log.d(TAG, "Found potential link structure.")
+        val linkText = text.substring(startIndex + 1, linkTextEnd)
+        val linkUrl = text.substring(linkTextEnd + 2, linkUrlEnd)
+        Log.i(TAG, ">>> Creating LinkNode: [$linkText]($linkUrl)")
+        val node = LinkNode(linkText, linkUrl)
+        return Pair(node, linkUrlEnd + 1) // New index is after closing parenthesis
+    }
+
+    private fun tryParseStrikethrough(text: String, startIndex: Int): Pair<StrikethroughTextNode, Int>? {
+        val delimiter = "~~"
+        if (!text.startsWith(delimiter, startIndex)) return null
+
+        val end = findClosingTag(text, startIndex + delimiter.length, delimiter)
+        if (end != -1) {
+            Log.d(TAG, "Found strikethrough from $startIndex to $end")
+            val content = text.substring(startIndex + delimiter.length, end)
+            val node = StrikethroughTextNode(content)
+            return Pair(node, end + delimiter.length)
+        } else {
+            Log.w(TAG, "Found opening strikethrough '$delimiter' at $startIndex but no closing tag.")
+            return null
+        }
+    }
+
+    /** Tries parsing bold (**, __) or italic (*, _) */
+    private fun tryParseEmphasis(text: String, startIndex: Int, delimiter: String): Pair<MarkdownNode, Int>? {
+        if (!text.startsWith(delimiter, startIndex)) return null
+
+        // Avoid matching * inside ** or _ inside __ inadvertently by the caller logic (check longer delimiter first)
+        if ((delimiter == "*" && text.startsWith("**", startIndex)) || (delimiter == "_" && text.startsWith("__", startIndex))) {
+            return null // Let the double-delimiter check handle this
+        }
+
+        val end = findClosingTag(text, startIndex + delimiter.length, delimiter)
+        if (end != -1) {
+            Log.d(TAG, "Found emphasis '$delimiter' from $startIndex to $end")
+            val content = text.substring(startIndex + delimiter.length, end)
+            val node: MarkdownNode = when (delimiter) {
+                "**", "__" -> BoldTextNode(content)
+                "*", "_" -> ItalicTextNode(content)
+                else -> return null // Should not happen
+            }
+            return Pair(node, end + delimiter.length)
+        } else {
+            Log.w(TAG, "Found opening emphasis '$delimiter' at $startIndex but no closing tag.")
+            return null
+        }
+    }
+
+
+    // --- Utility Functions ---
+
     /**
      * Appends the accumulated text in `currentText` as a `TextNode` to the `nodes` list
      * and clears the `currentText` builder. Only adds if `currentText` is not empty.
-     * @param currentText The StringBuilder accumulating plain text.
-     * @param nodes The list of parsed nodes to add to.
      */
     private fun flushText(currentText: StringBuilder, nodes: MutableList<MarkdownNode>) {
         if (currentText.isNotEmpty()) {
@@ -178,18 +181,14 @@ object InlineParser {
 
     /**
      * Finds the next occurrence of a closing `tag` starting from `startIndex`.
-     * IMPORTANT: Skips matching tags if they appear within an inline code span (` `).
+     * Skips matching tags if they appear within an inline code span (` `).
      * Does not handle escaped tags (e.g., \`).
-     *
-     * @param text The full text being parsed.
-     * @param startIndex The index to start searching from (exclusive of the opening tag).
-     * @param tag The closing tag string to search for (e.g., "`", "**", "*").
-     * @return The index where the closing tag starts, or -1 if not found or only found within code spans.
      */
     private fun findClosingTag(text: String, startIndex: Int, tag: String): Int {
         var i = startIndex
-        Log.v(TAG, "findClosingTag called: text=\"...\", startIndex=$startIndex, tag=\"$tag\"")
+        Log.v(TAG, "findClosingTag called: text='${text.substring(startIndex)}', startIndex=$startIndex, tag=\"$tag\"")
 
+        // Backtick search is simple - find the very next one.
         if (tag == "`") {
             val nextBacktick = text.indexOf('`', startIndex)
             Log.v(TAG, "findClosingTag for '`': result=$nextBacktick")
@@ -199,27 +198,32 @@ object InlineParser {
         var inCodeSpan = false
         while (i < text.length) {
             if (text[i] == '`') {
-                inCodeSpan = !inCodeSpan
-                Log.v(TAG, "findClosingTag: Toggled inCodeSpan to $inCodeSpan at index $i")
-                i++
-                continue
+                // Find closing backtick for this code span to properly skip its content
+                val codeSpanEnd = text.indexOf('`', i + 1)
+                if (codeSpanEnd != -1) {
+                    Log.v(TAG, "findClosingTag: Entering code span at $i, skipping until $codeSpanEnd")
+                    i = codeSpanEnd + 1 // Move past the closing backtick
+                    continue // Continue the outer loop
+                } else {
+                    // Unterminated code span, stop searching for the original tag
+                    Log.v(TAG, "findClosingTag: Unterminated code span found starting at $i. Aborting search for '$tag'.")
+                    return -1
+                }
             }
 
-            if (!inCodeSpan) {
-                if (text.startsWith(tag, i)) {
-                    val isEscaped = i > 0 && text[i-1] == '\\'
-                    if (!isEscaped) {
-                        Log.v(TAG, "findClosingTag: Found non-escaped tag '$tag' at index $i")
-                        return i
-                    } else {
-                        Log.v(TAG, "findClosingTag: Found tag '$tag' at index $i, but it was escaped.")
-                     }
+            // Check for the target tag if not inside a (skipped) code span
+            if (text.startsWith(tag, i)) {
+                val isEscaped = i > 0 && text[i-1] == '\\' // Basic escape check
+                if (!isEscaped) {
+                    Log.v(TAG, "findClosingTag: Found non-escaped tag '$tag' at index $i")
+                    return i
+                } else {
+                    Log.v(TAG, "findClosingTag: Found tag '$tag' at index $i, but it was escaped.")
                 }
-            } else {
-                Log.v(TAG, "findClosingTag: Skipping index $i because inCodeSpan is true.")
             }
             i++
-        }
+        } // End while
+
         Log.v(TAG, "findClosingTag: Reached end of text without finding tag '$tag'. Returning -1.")
         return -1
     }

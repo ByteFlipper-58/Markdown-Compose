@@ -4,10 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -17,22 +15,23 @@ import com.byteflipper.markdown_compose.model.TaskListItemNode
 import com.byteflipper.markdown_compose.parser.BlockParser
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 import android.util.Log
-import androidx.compose.material3.MaterialTheme
 
 private const val TAG = "TaskListItemComposable"
 
 /**
- * Renders a TaskListItemNode using a Checkbox and Text composable.
+ * Renders a TaskListItemNode using a Checkbox and ClickableText composable.
  *
  * @param node The TaskListItemNode containing the checked state and content.
  * @param styleSheet The stylesheet defining visual appearance, including checkbox colors.
  * @param modifier Modifier for layout adjustments of the Row.
+ * @param linkHandler The callback to handle link clicks within the task item text.
  */
 @Composable
 fun TaskListItem (
     node: TaskListItemNode,
     styleSheet: MarkdownStyleSheet,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    linkHandler: (url: String) -> Unit
 ) {
     val logicalIndentLevel = node.indentLevel / BlockParser.INPUT_SPACES_PER_LEVEL
     val indentPadding = styleSheet.listStyle.indentPadding * logicalIndentLevel
@@ -46,14 +45,11 @@ fun TaskListItem (
         val taskStyle = styleSheet.taskListItemStyle
         val defaultOutline = MaterialTheme.colorScheme.outline
 
-        // Determine the final colors to be used for the *disabled* state
-        // Use style color if defined, fallback to default outline/primary, then apply dimming (alpha)
+        // --- Checkbox styling (remains the same) ---
         val disabledCheckedContainerColor = taskStyle.disabledCheckboxContainerColor
             ?: (taskStyle.checkedCheckboxContainerColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.38f)
-        val disabledUncheckedBorderColor = taskStyle.disabledCheckboxContainerColor // Often same color for container/border in disabled state
+        val disabledUncheckedBorderColor = taskStyle.disabledCheckboxContainerColor
             ?: (taskStyle.uncheckedCheckboxBorderColor ?: defaultOutline).copy(alpha = 0.38f)
-        // NOTE: The disabled checkmark indicator color cannot be directly set in M3 1.3.1 via `colors`.
-        // It will likely be derived internally.
 
         Checkbox(
             checked = node.isChecked,
@@ -61,11 +57,9 @@ fun TaskListItem (
             enabled = false,
             modifier = Modifier.size(24.dp),
             colors = CheckboxDefaults.colors(
-                // --- Configure the available DISABLED state colors ---
                 disabledCheckedColor = disabledCheckedContainerColor,
                 disabledUncheckedColor = disabledUncheckedBorderColor,
                 disabledIndeterminateColor = disabledCheckedContainerColor
-                // The parameter `disabledCheckmarkColor` is NOT available here in M3 v1.3.1
             )
         )
 
@@ -78,9 +72,19 @@ fun TaskListItem (
             baseTextStyle
         }
 
-        Text(
-            text = MarkdownRenderer.render(node.content, styleSheet),
-            style = LocalTextStyle.current.merge(contentTextStyle)
+        val contentString = MarkdownRenderer.render(node.content, styleSheet)
+
+        ClickableText(
+            text = contentString,
+            style = LocalTextStyle.current.merge(contentTextStyle),
+            onClick = { offset ->
+                contentString
+                    .getStringAnnotations(Link.URL_TAG, offset, offset)
+                    .firstOrNull()?.let { annotation ->
+                        Log.i(TAG, "Link clicked in TaskListItem: ${annotation.item}")
+                        linkHandler(annotation.item)
+                    }
+            }
         )
     }
 }

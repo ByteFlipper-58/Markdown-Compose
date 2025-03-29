@@ -10,59 +10,73 @@ private const val TAG = "TableParser"
  */
 class TableParser {
 
+    private val codeBlockFenceRegex = Regex("""^\s*```(\w*)\s*$""") // Added to avoid parsing code fences as tables
+
     /**
-     * Checks if the given text potentially represents a Markdown table header and separator.
-     * @param text The input text (expected to be at least 2 lines).
-     * @return True if the text matches the basic table structure, false otherwise.
+     * Checks if the lines starting at `startIndex` look like a table and parses them if they do.
+     *
+     * @param lines The list of all lines in the input.
+     * @param startIndex The index of the potential header line.
+     * @return A Pair containing the parsed `TableNode` and the number of lines consumed,
+     *         or null if it's not a valid table start.
      */
-    fun isTable(text: String): Boolean {
-        val lines = text.lines().filter { it.isNotBlank() }
-        if (lines.size < 2) return false
+    fun tryParseTable(lines: List<String>, startIndex: Int): Pair<TableNode, Int>? {
+        if (startIndex + 1 >= lines.size) return null // Need at least header + separator
 
-        val firstLine = lines[0].trim()
-        val secondLine = lines[1].trim()
+        val headerLine = lines[startIndex].trim()
+        val separatorLine = lines[startIndex + 1].trim()
 
-        // Header must contain at least one '|'
-        // Separator must contain '|', '-', and potentially ':'
-        // Separator needs same or more pipes than header potentially
-        val headerPipes = firstLine.count { it == '|' }
-        val separatorPipes = secondLine.count { it == '|' }
-        val separatorContentValid = secondLine.all { it == '|' || it == '-' || it == ':' || it.isWhitespace() }
+        // Basic validation - must contain pipe, separator needs pipes and dashes
+        if (!headerLine.contains("|") || !separatorLine.contains("|") || !separatorLine.contains("-")) {
+            return null
+        }
+        // Separator line must only contain valid chars
+        if (!separatorLine.all { it == '|' || it == '-' || it == ':' || it.isWhitespace() }) {
+            return null
+        }
+        // Avoid consuming code fences
+        if (codeBlockFenceRegex.matches(headerLine) || codeBlockFenceRegex.matches(separatorLine)) {
+            return null
+        }
 
-        return headerPipes >= 1 &&
-                separatorPipes >= headerPipes && // Separator should have at least as many dividers
-                secondLine.contains("-") &&
-                separatorContentValid &&
-                // Basic check for leading/trailing pipes, though trimming helps
-                (firstLine.startsWith("|") || firstLine.endsWith("|")) &&
-                (secondLine.startsWith("|") || secondLine.endsWith("|"))
+        // Determine the actual end of the table block
+        var tableEndIndex = startIndex + 2 // Start looking after separator
+        while (tableEndIndex < lines.size &&
+            lines[tableEndIndex].trim().contains("|") && // Must contain a pipe
+            !codeBlockFenceRegex.matches(lines[tableEndIndex].trim()) && // Not a code fence
+            !isSeparatorLine(lines[tableEndIndex].trim()) // Stop if another separator line is found (potential new table)
+        ) {
+            tableEndIndex++
+        }
 
+        val tableLines = lines.subList(startIndex, tableEndIndex)
+        if (tableLines.size < 2) return null // Should have at least header and separator
+
+        // Perform full parsing attempt
+        return try {
+            val tableNode = parseTableInternal(tableLines)
+            Pair(tableNode, tableLines.size)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing detected table block starting at line $startIndex: ${e.message}")
+            null // Parsing failed
+        }
     }
 
+    /** Checks if a line looks like a separator line */
+    private fun isSeparatorLine(line: String): Boolean {
+        return line.contains('-') &&
+                line.contains('|') &&
+                line.all { it == '|' || it == '-' || it == ':' || it.isWhitespace() }
+    }
 
     /**
-     * Parses a Markdown table string and returns a TableNode.
-     * Assumes `isTable` has already confirmed the input is likely a table.
-     * @param text The Markdown table content.
-     * @return Parsed TableNode.
-     * @throws IllegalArgumentException if the table format is invalid (e.g., missing separator).
+     * Internal parsing logic, called when we are reasonably sure we have table lines.
      */
-    fun parseTable(text: String): TableNode {
-        Log.d(TAG, "Starting table parsing for:\n$text")
-        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() && it.contains("|") }
+    private fun parseTableInternal(tableLines: List<String>): TableNode {
+        Log.d(TAG, "Starting internal table parsing for ${tableLines.size} lines.")
 
-        if (lines.size < 2) {
-            throw IllegalArgumentException("Table text must have at least a header and a separator line. Found: ${lines.size}")
-        }
-
-        // Extract header and separator lines
-        val headerLine = lines[0]
-        val separatorLine = lines[1]
-
-        // Validate separator line more strictly
-        if (!separatorLine.contains("-") || !separatorLine.contains("|")) {
-            throw IllegalArgumentException("Invalid table separator line: $separatorLine")
-        }
+        val headerLine = tableLines[0].trim()
+        val separatorLine = tableLines[1].trim()
 
         // Determine column alignments from the separator line
         val alignments = parseColumnAlignments(separatorLine)
@@ -75,10 +89,9 @@ class TableParser {
         // Add table header row
         rows.add(parseRow(headerLine, columnCount, isHeader = true))
 
-        // Add remaining data rows
-        for (i in 2 until lines.size) {
-            // Allow rows with fewer cells than header - they will be rendered with empty trailing cells
-            rows.add(parseRow(lines[i], columnCount, isHeader = false))
+        // Add remaining data rows (starting from index 2 of tableLines)
+        for (i in 2 until tableLines.size) {
+            rows.add(parseRow(tableLines[i].trim(), columnCount, isHeader = false))
         }
 
         Log.d(TAG, "Table successfully parsed with ${rows.size} rows and $columnCount columns")
@@ -86,6 +99,7 @@ class TableParser {
     }
 
 
+    // --- (Keep parseRow and parseColumnAlignments as they were) ---
     /**
      * Parses a single table row into a TableRowNode.
      * @param line The table row text (trimmed).
@@ -105,16 +119,14 @@ class TableParser {
         val cells = mutableListOf<TableCellNode>()
         for (i in 0 until expectedColumnCount) {
             val contentString = cellContents.getOrElse(i) { "" } // Get content or empty if row has fewer cells
-            val contentNodes = InlineParser.parseInline(contentString)
+            val contentNodes = InlineParser.parseInline(contentString) // Use InlineParser here
             cells.add(TableCellNode(contentNodes, i)) // Use index i as columnIndex
         }
 
         // If row had more cells than expected (malformed markdown?), truncate for now
-        // Or could throw an error, but being lenient might be better
         if (cellContents.size > expectedColumnCount) {
             Log.w(TAG, "Row has more cells (${cellContents.size}) than expected ($expectedColumnCount). Truncating extra cells. Line: $line")
         }
-
 
         return TableRowNode(cells.toList(), isHeader) // Ensure immutable list
     }
@@ -136,12 +148,12 @@ class TableParser {
 
         return separators.map { separator ->
             val startsWithColon = separator.startsWith(":")
-            val endsWithColon = separator.endsWith(":")
+            val endsWithColon = separator.endsWith(":") && separator.length > 1 // Ensure ':' isn't the only char
 
             when {
                 startsWithColon && endsWithColon -> ColumnAlignment.CENTER
                 endsWithColon -> ColumnAlignment.RIGHT
-                // startsWithColon -> ColumnAlignment.LEFT (default)
+                // startsWithColon -> ColumnAlignment.LEFT // Considered LEFT by default now
                 else -> ColumnAlignment.LEFT // Default alignment
             }
         }

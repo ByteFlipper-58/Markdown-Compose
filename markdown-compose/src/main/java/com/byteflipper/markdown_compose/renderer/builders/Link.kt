@@ -8,14 +8,15 @@ import com.byteflipper.markdown_compose.model.LinkNode
 import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
 
 object Link {
-    private const val URL_TAG = "URL"
+    internal const val URL_TAG = "URL"
 
     fun render(builder: AnnotatedString.Builder, node: LinkNode, styleSheet: MarkdownStyleSheet) {
         val linkStyleModel = styleSheet.linkStyle
+        // Use base text color if link color is unspecified
+        val textColor = linkStyleModel.color.takeOrElse { styleSheet.textStyle.color }
         val spanStyle = SpanStyle(
-            color = linkStyleModel.color.takeOrElse { styleSheet.textStyle.color },
+            color = textColor,
             textDecoration = linkStyleModel.textDecoration
-
         )
 
         builder.pushStringAnnotation(tag = URL_TAG, annotation = node.url)
