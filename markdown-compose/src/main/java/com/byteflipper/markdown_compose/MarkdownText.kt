@@ -3,35 +3,33 @@ package com.byteflipper.markdown_compose
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.byteflipper.markdown_compose.model.*
 import com.byteflipper.markdown_compose.parser.MarkdownParser
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
-import com.byteflipper.markdown_compose.renderer.builders.*
+import com.byteflipper.markdown_compose.renderer.builders.* // Import new builders
 import com.byteflipper.markdown_compose.renderer.canvas.HorizontalRule
+import android.util.Log
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 
 private const val TAG = "MarkdownText"
 
 /**
  * Composable function to render Markdown content as Jetpack Compose UI components.
- * Handles block layout, spacing, rendering of different Markdown elements, and clickable links.
+ * Handles block layout, spacing, and rendering of different Markdown elements using customizable styles.
  *
  * @param markdown The Markdown string to be rendered.
  * @param modifier Modifier for layout adjustments.
  * @param styleSheet The stylesheet defining the visual appearance of Markdown elements.
  *                   Defaults to `defaultMarkdownStyleSheet()` based on MaterialTheme.
- * @param onLinkClick Optional lambda to handle clicks on links. If null, links will be opened
- *                    in the default browser using an ACTION_VIEW Intent. If provided, this lambda
- *                    will be called with the clicked URL string.
  */
 @Composable
 fun MarkdownText(
@@ -68,9 +66,12 @@ fun MarkdownText(
 
     Column(modifier = modifier) {
         var lastRenderedNode: MarkdownNode? = null
-        val textNodeGrouper = mutableListOf<MarkdownNode>() // Buffer for consecutive text/inline nodes
+        val textNodeGrouper = mutableListOf<MarkdownNode>()
 
-        /** Flushes the buffered inline nodes into a single ClickableText composable. */
+        /**
+         * Renders the accumulated inline/text nodes in `textNodeGrouper` as a single `Text` or `ClickableText`.
+         * Also handles adding spacing *before* this text block if necessary based on `lastRenderedNode`.
+         */
         @Composable
         fun flushTextGroup() {
             if (textNodeGrouper.isNotEmpty()) {
@@ -99,10 +100,11 @@ fun MarkdownText(
                     }
                 )
 
-                lastRenderedNode = textNodeGrouper.last() // Update last node *after* rendering group
+
+                lastRenderedNode = textNodeGrouper.last()
                 textNodeGrouper.clear()
             } else {
-                Log.v(TAG, "flushTextGroup called, but buffer is empty.")
+                Log.v(TAG, "flushTextGroup called, but buffer is empty.") // Optional: Reduce log noise
             }
         }
 
@@ -112,42 +114,47 @@ fun MarkdownText(
             val needsTopSpacing = lastRenderedNode != null && lastRenderedNode !is LineBreakNode
             Log.v(TAG, "Node $index needsTopSpacing: $needsTopSpacing (last was ${lastRenderedNode?.let { it::class.simpleName }})")
 
-            // --- Flush Condition: Determine if the current node is a block-level element ---
-            // Check if the current node necessitates flushing the text buffer
-            val shouldFlush = when (node) {
-                // These nodes break the paragraph flow and require their own layout
-                is HeaderNode, is TableNode, is HorizontalRuleNode, is BlockQuoteNode,
-                is ListItemNode, is TaskListItemNode,
-                is LineBreakNode // Explicit line break also flushes
-                    -> true
-                // Code blocks flush
-                is CodeNode -> node.isBlock
-                // Inline elements do not trigger a flush on their own
-                else -> false
-            }
-            Log.v(TAG, "Node $index shouldFlush: $shouldFlush")
-
-
-            if (shouldFlush) {
-                flushTextGroup()
-            }
-
+            // --- Spacing Calculation ---
             val spacingDp = when (node) {
+                // Explicit LineBreak gets lineBreakSpacing (if space is needed)
                 is LineBreakNode -> if (needsTopSpacing) styleSheet.lineBreakSpacing else 0.dp
-                is HeaderNode, is TableNode, is HorizontalRuleNode, is BlockQuoteNode ->
+
+                // Standard block elements get blockSpacing (if space is needed)
+                is HeaderNode, is TableNode, is HorizontalRuleNode, is BlockQuoteNode,
+                is ImageNode, is ImageLinkNode -> // Treat images like blocks for spacing
                     if (needsTopSpacing) styleSheet.blockSpacing else 0.dp
                 is CodeNode -> if (node.isBlock && needsTopSpacing) styleSheet.blockSpacing else 0.dp
+
+                // List items & Task list items: Add blockSpacing *only* before the *first* item of a list group.
                 is ListItemNode -> if (needsTopSpacing && lastRenderedNode !is ListItemNode && lastRenderedNode !is TaskListItemNode) styleSheet.blockSpacing else 0.dp
                 is TaskListItemNode -> if (needsTopSpacing && lastRenderedNode !is ListItemNode && lastRenderedNode !is TaskListItemNode) styleSheet.blockSpacing else 0.dp
+
+                // Inline elements don't add spacing themselves; handled by flushTextGroup.
                 else -> 0.dp
             }
             Log.v(TAG, "Node $index (${node::class.simpleName}) calculated spacing: ${spacingDp.value} dp")
 
+            // --- Flush Condition: Determine if the current node breaks inline flow ---
+            val shouldFlush = when (node) {
+                is HeaderNode, is TableNode, is HorizontalRuleNode, is BlockQuoteNode,
+                is ListItemNode, is TaskListItemNode,
+                is ImageNode, is ImageLinkNode, // Images break inline flow
+                is LineBreakNode -> true
+                is CodeNode -> node.isBlock // Block code flushes, inline code doesn't
+                else -> false // Inline nodes do not trigger a flush
+            }
+            Log.v(TAG, "Node $index shouldFlush: $shouldFlush")
+
+            // --- Flush Buffer if needed ---
+            if (shouldFlush) {
+                flushTextGroup()
+            }
+
+            // --- Add Vertical Spacing ---
             if (spacingDp > 0.dp) {
                 Spacer(modifier = Modifier.height(spacingDp))
                 Log.v(TAG,"Added Spacer height ${spacingDp.value} dp before node $index")
             }
-
 
             // --- Render the Current Node ---
             when (node) {
@@ -160,6 +167,7 @@ fun MarkdownText(
                         linkHandler = currentLinkHandler
                     )
                     lastRenderedNode = node
+                    Log.d(TAG, "Rendered TableNode $index")
                 }
                 is HorizontalRuleNode -> {
                     HorizontalRule.Render(
@@ -167,6 +175,7 @@ fun MarkdownText(
                         thickness = styleSheet.horizontalRuleStyle.thickness
                     )
                     lastRenderedNode = node
+                    Log.d(TAG, "Rendered HorizontalRuleNode $index")
                 }
                 is BlockQuoteNode -> {
                     BlockQuoteComposable(
@@ -176,11 +185,13 @@ fun MarkdownText(
                         linkHandler = currentLinkHandler
                     )
                     lastRenderedNode = node
+                    Log.d(TAG, "Rendered BlockQuoteNode $index")
                 }
                 is CodeNode -> {
                     if (node.isBlock) {
                         CodeBlockComposable(node = node, styleSheet = styleSheet, modifier = Modifier.fillMaxWidth())
                         lastRenderedNode = node
+                        Log.d(TAG, "Rendered CodeBlockNode $index")
                     } else {
                         // Buffer INLINE code for flushTextGroup
                         Log.v(TAG, "Buffering Inline CodeNode $index")
@@ -195,18 +206,38 @@ fun MarkdownText(
                         linkHandler = currentLinkHandler
                     )
                     lastRenderedNode = node
+                    Log.d(TAG, "Rendered TaskListItemNode $index via Composable")
+                }
+                is ImageNode -> { // New: Render ImageNode
+                    ImageComposable(
+                        node = node,
+                        styleSheet = styleSheet,
+                        modifier = Modifier.fillMaxWidth() // Default behavior, overridden by styleSheet.imageStyle.modifier
+                    )
+                    lastRenderedNode = node
+                    Log.d(TAG, "Rendered ImageNode $index")
+                }
+                is ImageLinkNode -> { // New: Render ImageLinkNode
+                    ImageLinkComposable(
+                        node = node,
+                        styleSheet = styleSheet,
+                        modifier = Modifier.fillMaxWidth() // Default behavior, overridden by styleSheet.imageStyle.modifier
+                    )
+                    lastRenderedNode = node
+                    Log.d(TAG, "Rendered ImageLinkNode $index")
                 }
 
-                // === Nodes Rendered primarily as Text (using ClickableText) ===
+                // === Nodes Rendered primarily as Text (using AnnotatedString renderer) ===
                 is HeaderNode -> {
-                    Text(
+                    Text( // Headers are not typically clickable
                         text = MarkdownRenderer.render(listOf(node), styleSheet), // Renderer applies H1-H6 style
-                        style = baseTextStyle,
+                        style = baseTextStyle, // Base style provided to Text
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = styleSheet.headerStyle.bottomPadding) // Add padding after
                     )
                     lastRenderedNode = node
+                    Log.d(TAG, "Rendered HeaderNode $index")
                 }
                 is ListItemNode -> {
                     val listString = MarkdownRenderer.render(listOf(node), styleSheet)
@@ -227,7 +258,7 @@ fun MarkdownText(
                 }
                 is LineBreakNode -> {
                     // Explicit line break node (blank line in source). Spacing was handled above.
-                    lastRenderedNode = node // Update last node (represents the blank line itself)
+                    lastRenderedNode = node
                     Log.d(TAG, "Processed LineBreakNode $index")
                 }
 
@@ -237,14 +268,12 @@ fun MarkdownText(
                     textNodeGrouper.add(node)
                 }
 
-                // Internal/Helper Nodes (Should not appear here)
                 is TableCellNode, is TableRowNode -> {
                     Log.e(TAG, "Encountered unexpected ${node.javaClass.simpleName} $index during rendering.")
                 }
             }
         }
 
-        // Flush any remaining text in the buffer after the loop finishes
         Log.d(TAG, "Flushing remaining text group after loop.")
         flushTextGroup()
         Log.d(TAG, "MarkdownText rendering complete.")

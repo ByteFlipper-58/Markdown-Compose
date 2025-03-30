@@ -46,6 +46,7 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.7.8")
     implementation("androidx.compose.ui:ui-text:1.7.8")
     implementation("androidx.compose.foundation:foundation:1.7.8")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.8")
     implementation("androidx.compose.ui:ui-tooling-preview:1.7.8")

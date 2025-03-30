@@ -12,6 +12,7 @@ private const val TAG = "MarkdownRenderer"
  * Object responsible for rendering a list of MarkdownNode objects into an AnnotatedString using
  * a provided MarkdownStyleSheet. This is primarily used for rendering inline content
  * within Text composables or for block elements that are essentially styled text (Headers, ListItems).
+ * Images and ImageLinks are handled by dedicated Composables.
  */
 object MarkdownRenderer {
 
@@ -32,8 +33,8 @@ object MarkdownRenderer {
 
     /**
      * Renders a single MarkdownNode into the provided AnnotatedString.Builder using the stylesheet.
-     * Note: Nodes like TableNode, HorizontalRuleNode, TaskListItemNode, and Block CodeNode are typically
-     * handled by dedicated Composables in MarkdownText, not through this AnnotatedString renderer.
+     * Note: Nodes like TableNode, HorizontalRuleNode, TaskListItemNode, Block CodeNode, ImageNode,
+     * and ImageLinkNode are handled by dedicated Composables in MarkdownText, not here.
      *
      * @param builder The AnnotatedString.Builder to append the rendered content.
      * @param node The MarkdownNode to render.
@@ -65,13 +66,18 @@ object MarkdownRenderer {
             // NODES HANDLED BY DEDICATED COMPOSABLES in MarkdownText: Log warnings if they reach here.
             is TaskListItemNode -> {
                 Log.w(TAG, "TaskListItemNode encountered in AnnotatedString render - should be handled by TaskListItemComposable.")
-                // builder.append("[Checkbox Item Placeholder]") // Optional placeholder
             }
             is HorizontalRuleNode -> {
                 Log.w(TAG, "HorizontalRuleNode encountered - should be handled by HorizontalRule composable.")
             }
             is TableNode -> {
                 Log.w(TAG, "TableNode encountered - should be handled by Table.RenderTable composable.")
+            }
+            is ImageNode -> {
+                Log.w(TAG, "ImageNode encountered in AnnotatedString render - should be handled by ImageComposable.")
+            }
+            is ImageLinkNode -> {
+                Log.w(TAG, "ImageLinkNode encountered in AnnotatedString render - should be handled by ImageLinkComposable.")
             }
 
             // Internal/Helper Nodes (Should generally not be in the final list)

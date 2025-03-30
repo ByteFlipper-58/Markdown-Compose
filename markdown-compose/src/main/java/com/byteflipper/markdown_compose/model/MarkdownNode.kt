@@ -27,6 +27,14 @@ data class StrikethroughTextNode(val text: String) : MarkdownNode
 data class TextNode(val text: String) : MarkdownNode
 data class LinkNode(val text: String, val url: String) : MarkdownNode
 
+data class ImageNode(val altText: String, val url: String) : MarkdownNode
+
+data class ImageLinkNode(
+    val altText: String,
+    val imageUrl: String,
+    val linkUrl: String
+) : MarkdownNode
+
 data class CodeNode(
     val code: String,
     val language: String? = null,

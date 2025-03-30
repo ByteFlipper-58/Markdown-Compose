@@ -257,7 +257,15 @@ object SampleMarkdown {
         | `Код` в яч. | **Жирный**  | *Курсив*    |
 
         ---
+        
+        ## ФОТАЧКИ
 
+        Простое изображение:
+        ![Compose Logo](https://cdn-icons-png.flaticon.com/512/1509/1509974.png)
+
+        Изображение-ссылка:
+        [![GitHub Logo](https://cdn-icons-png.flaticon.com/512/1509/1509974.png)](https://github.com)
+        
         Конец примера.
         Еще один параграф текста для проверки отступов.
         """.trimIndent()

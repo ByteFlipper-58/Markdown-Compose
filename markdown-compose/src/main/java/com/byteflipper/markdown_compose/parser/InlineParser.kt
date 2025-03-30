@@ -6,7 +6,8 @@ import com.byteflipper.markdown_compose.model.*
 private const val TAG = "InlineParser"
 
 /**
- * Object responsible for parsing inline Markdown elements such as links, bold, italic, strikethrough, and code spans.
+ * Object responsible for parsing inline Markdown elements such as links, bold, italic,
+ * strikethrough, code spans, images, and image links.
  */
 object InlineParser {
 
@@ -15,7 +16,7 @@ object InlineParser {
      * Handles basic nesting and ignores markdown syntax within code spans.
      *
      * @param text The raw text line or part of a line containing potential inline markdown.
-     * @return A list of parsed inline MarkdownNode objects (TextNode, BoldTextNode, etc.).
+     * @return A list of parsed inline MarkdownNode objects (TextNode, BoldTextNode, ImageNode, etc.).
      */
     fun parseInline(text: String): List<MarkdownNode> {
         Log.d(TAG, "--- Starting parseInline for text: \"$text\" ---")
@@ -30,37 +31,50 @@ object InlineParser {
             var nodeParsed = false
 
             // Try parsing different inline elements in order of potential precedence/complexity
+            // Backticks first to prevent other syntax inside code spans
             tryParseCodeSpan(text, currentIndex)?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
                 nodeParsed = true
-            } ?: tryParseLink(text, currentIndex)?.let { (node, nextIndex) ->
+            } ?: // Images ![]() before Links []() to avoid capturing image alt text as link text
+            tryParseImage(text, currentIndex)?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
                 nodeParsed = true
-            } ?: tryParseStrikethrough(text, currentIndex)?.let { (node, nextIndex) ->
+            } ?: // Links []() (will handle image links internally)
+            tryParseLinkOrImageLink(text, currentIndex)?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
                 nodeParsed = true
-            } ?: tryParseEmphasis(text, currentIndex, "**")?.let { (node, nextIndex) -> // Bold **
+            } ?: // Strikethrough ~~...~~
+            tryParseStrikethrough(text, currentIndex)?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
                 nodeParsed = true
-            } ?: tryParseEmphasis(text, currentIndex, "__")?.let { (node, nextIndex) -> // Bold __
+            } ?: // Bold **...**
+            tryParseEmphasis(text, currentIndex, "**")?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
                 nodeParsed = true
-            } ?: tryParseEmphasis(text, currentIndex, "*")?.let { (node, nextIndex) -> // Italic *
+            } ?: // Bold __...__
+            tryParseEmphasis(text, currentIndex, "__")?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
                 nodeParsed = true
-            } ?: tryParseEmphasis(text, currentIndex, "_")?.let { (node, nextIndex) -> // Italic _
+            } ?: // Italic *...* (check after bold)
+            tryParseEmphasis(text, currentIndex, "*")?.let { (node, nextIndex) ->
+                flushText(currentText, nodes)
+                nodes.add(node)
+                currentIndex = nextIndex
+                nodeParsed = true
+            } ?: // Italic _..._ (check after bold)
+            tryParseEmphasis(text, currentIndex, "_")?.let { (node, nextIndex) ->
                 flushText(currentText, nodes)
                 nodes.add(node)
                 currentIndex = nextIndex
@@ -97,27 +111,73 @@ object InlineParser {
         }
     }
 
-    private fun tryParseLink(text: String, startIndex: Int): Pair<LinkNode, Int>? {
-        if (!text.startsWith("[", startIndex)) return null
+    /**
+     * Tries to parse an image ![alt](url)
+     */
+    private fun tryParseImage(text: String, startIndex: Int): Pair<ImageNode, Int>? {
+        if (!text.startsWith("![", startIndex)) return null
 
-        val linkTextEnd = text.indexOf(']', startIndex + 1)
-        if (linkTextEnd == -1 || linkTextEnd + 1 >= text.length || text[linkTextEnd + 1] != '(') {
-            //Log.d(TAG, "Found '[' at $startIndex but not followed by '](...'")
-            return null // Not a link start
+        val altTextEnd = text.indexOf(']', startIndex + 2) // Start search after '!['
+        if (altTextEnd == -1 || altTextEnd + 1 >= text.length || text[altTextEnd + 1] != '(') {
+            //Log.d(TAG, "Image parse: Found '![' at $startIndex but not followed by '](...'")
+            return null // Not an image start
         }
 
-        val linkUrlEnd = text.indexOf(')', linkTextEnd + 2)
-        if (linkUrlEnd == -1) {
-            Log.d(TAG, "Found '[text](...' at $startIndex but missing closing parenthesis ')' for link.")
+        val urlEnd = text.indexOf(')', altTextEnd + 2) // Start search after ']('
+        if (urlEnd == -1) {
+            Log.d(TAG, "Image parse: Found '![alt](...' at $startIndex but missing closing parenthesis ')' for URL.")
             return null
         }
 
-        Log.d(TAG, "Found potential link structure.")
-        val linkText = text.substring(startIndex + 1, linkTextEnd)
-        val linkUrl = text.substring(linkTextEnd + 2, linkUrlEnd)
-        Log.i(TAG, ">>> Creating LinkNode: [$linkText]($linkUrl)")
-        val node = LinkNode(linkText, linkUrl)
-        return Pair(node, linkUrlEnd + 1) // New index is after closing parenthesis
+        Log.d(TAG, "Found potential image structure ![alt](url).")
+        val altText = text.substring(startIndex + 2, altTextEnd)
+        val url = text.substring(altTextEnd + 2, urlEnd)
+        Log.i(TAG, ">>> Creating ImageNode: alt=\"$altText\", url=\"$url\"")
+        val node = ImageNode(altText, url)
+        return Pair(node, urlEnd + 1) // New index is after closing parenthesis
+    }
+
+
+    /**
+     * Tries parsing a link [text](url) or an image link [![alt](img)](url).
+     * Relies on `tryParseImage` to identify if the inner content is an image.
+     */
+    private fun tryParseLinkOrImageLink(text: String, startIndex: Int): Pair<MarkdownNode, Int>? {
+        if (!text.startsWith("[", startIndex)) return null
+
+        val contentEnd = text.indexOf(']', startIndex + 1)
+        if (contentEnd == -1 || contentEnd + 1 >= text.length || text[contentEnd + 1] != '(') {
+            //Log.d(TAG, "Link parse: Found '[' at $startIndex but not followed by '](...'")
+            return null // Not a link/image link start
+        }
+
+        val linkUrlEnd = text.indexOf(')', contentEnd + 2) // Start search after ']('
+        if (linkUrlEnd == -1) {
+            Log.d(TAG, "Link parse: Found '[content](...' at $startIndex but missing closing parenthesis ')' for link URL.")
+            return null
+        }
+
+        // Successfully found the outer link structure: [content](linkUrl)
+        val content = text.substring(startIndex + 1, contentEnd)
+        val linkUrl = text.substring(contentEnd + 2, linkUrlEnd)
+        val nextIndex = linkUrlEnd + 1
+
+        // Now, check if the 'content' is actually an image: ![...](...)
+        tryParseImage(content, 0)?.let { (imageNode, contentNextIndex) ->
+            // Check if the image consumed the *entire* content string
+            if (contentNextIndex == content.length) {
+                Log.i(TAG, ">>> Creating ImageLinkNode: alt=\"${imageNode.altText}\", img=\"${imageNode.url}\", link=\"$linkUrl\"")
+                val node = ImageLinkNode(imageNode.altText, imageNode.url, linkUrl)
+                return Pair(node, nextIndex)
+            }
+            // If content contains an image but also other text, treat as regular link for now
+            Log.d(TAG, "Link content contains an image but also other text. Treating as simple LinkNode.")
+        }
+
+        // If content is not an image (or not *only* an image), parse as regular Link
+        Log.i(TAG, ">>> Creating LinkNode: [$content]($linkUrl)")
+        val node = LinkNode(content, linkUrl) // Content is treated as plain text for the link label
+        return Pair(node, nextIndex)
     }
 
     private fun tryParseStrikethrough(text: String, startIndex: Int): Pair<StrikethroughTextNode, Int>? {
@@ -142,6 +202,7 @@ object InlineParser {
 
         // Avoid matching * inside ** or _ inside __ inadvertently by the caller logic (check longer delimiter first)
         if ((delimiter == "*" && text.startsWith("**", startIndex)) || (delimiter == "_" && text.startsWith("__", startIndex))) {
+            Log.v(TAG, "Emphasis: Skipping '$delimiter' at $startIndex because longer delimiter found.")
             return null // Let the double-delimiter check handle this
         }
 
@@ -183,6 +244,7 @@ object InlineParser {
      * Finds the next occurrence of a closing `tag` starting from `startIndex`.
      * Skips matching tags if they appear within an inline code span (` `).
      * Does not handle escaped tags (e.g., \`).
+     * IMPORTANT: This does NOT handle nested tags of the same type (e.g., *italic* inside *italic*).
      */
     private fun findClosingTag(text: String, startIndex: Int, tag: String): Int {
         var i = startIndex
@@ -215,8 +277,25 @@ object InlineParser {
             if (text.startsWith(tag, i)) {
                 val isEscaped = i > 0 && text[i-1] == '\\' // Basic escape check
                 if (!isEscaped) {
-                    Log.v(TAG, "findClosingTag: Found non-escaped tag '$tag' at index $i")
-                    return i
+                    // Basic whitespace check: closing tag shouldn't be preceded by space,
+                    // and shouldn't be followed by alphanumeric (for *, _) if it's the same as the start
+                    // This is a simplification of common markdown rules.
+                    val spaceBefore = i > startIndex && text[i-1].isWhitespace()
+                    val alphaNumAfter = i + tag.length < text.length && text[i + tag.length].isLetterOrDigit()
+
+                    // Rule: '*' and '_' need non-space before OR non-alphanum after to be valid closing tags.
+                    val isValidEmphasisClosing = (tag == "*" || tag == "_") && (!spaceBefore || !alphaNumAfter)
+
+                    // Rule: '**', '__', '~~' are generally less strict about surrounding whitespace/chars.
+                    val isValidDelimiterClosing = tag != "*" && tag != "_"
+
+                    if (isValidEmphasisClosing || isValidDelimiterClosing) {
+                        Log.v(TAG, "findClosingTag: Found valid non-escaped tag '$tag' at index $i")
+                        return i
+                    } else {
+                        Log.v(TAG, "findClosingTag: Found tag '$tag' at index $i, but invalid surrounding chars.")
+                    }
+
                 } else {
                     Log.v(TAG, "findClosingTag: Found tag '$tag' at index $i, but it was escaped.")
                 }

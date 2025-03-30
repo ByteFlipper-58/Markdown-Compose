@@ -7,8 +7,11 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -122,6 +125,16 @@ data class LinkStyle(
     val color: Color
 )
 
+/** Styles for ![images](...). */
+@Immutable
+data class ImageStyle(
+    val modifier: Modifier = Modifier,
+    val shape: Shape = RectangleShape,
+    val contentScale: ContentScale = ContentScale.Fit,
+    val placeholder: Painter? = null,
+    val error: Painter? = null
+)
+
 /**
  * Defines the visual styling for rendering Markdown content using Jetpack Compose.
  * Provides customization options for various Markdown elements like headers, lists, code blocks, etc.
@@ -143,6 +156,7 @@ data class MarkdownStyleSheet(
     val tableStyle: TableStyle,
     val horizontalRuleStyle: HorizontalRuleStyle,
     val linkStyle: LinkStyle,
+    val imageStyle: ImageStyle,
     val blockSpacing: Dp = 16.dp,
     val lineBreakSpacing: Dp = 16.dp
 )
@@ -171,6 +185,7 @@ data class MarkdownStyleSheet(
  * @param uncheckedCheckboxBorderColor Color for the checkbox border when unchecked. Defaults to outline.
  * @param disabledCheckboxIndicatorColor Color for the checkmark when disabled (as task checkboxes are). Defaults to `checkedTaskItemTextColor`.
  * @param disabledCheckboxContainerColor Color for the checkbox background/border when disabled. Defaults to `checkedTaskItemTextColor`.
+ * @param imageStyle Default styles for images.
  * @return A remembered [MarkdownStyleSheet] instance with default values.
  */
 @Composable
@@ -196,7 +211,8 @@ fun defaultMarkdownStyleSheet(
     checkedCheckboxContainerColor: Color = MaterialTheme.colorScheme.primary,
     uncheckedCheckboxBorderColor: Color = MaterialTheme.colorScheme.outline,
     disabledCheckboxIndicatorColor: Color = checkedTaskItemTextColor,
-    disabledCheckboxContainerColor: Color = checkedTaskItemTextColor
+    disabledCheckboxContainerColor: Color = checkedTaskItemTextColor,
+    imageStyle: ImageStyle = ImageStyle()
 ): MarkdownStyleSheet {
     val resolvedTextColor = textStyle.color.takeOrElse { MaterialTheme.colorScheme.onSurface }
     val baseTextStyle = textStyle.copy(color = resolvedTextColor)
@@ -227,6 +243,7 @@ fun defaultMarkdownStyleSheet(
         checkedTaskItemTextColor,
         checkedCheckboxIndicatorColor, checkedCheckboxContainerColor,
         uncheckedCheckboxBorderColor, disabledCheckboxIndicatorColor, disabledCheckboxContainerColor,
+        imageStyle,
         baseTextStyle, onSurfaceVariantColor, codeTextStyle, defaultLabelSmallStyle,
         languageLabelTextStyleResolved, infoBarTextStyleResolved,
         resolvedInlineCodeStyle, defaultCheckedTaskItemTextStyle
@@ -241,6 +258,7 @@ fun defaultMarkdownStyleSheet(
                 textDecoration = TextDecoration.Underline,
                 color = linkColor
             ),
+            imageStyle = imageStyle,
             headerStyle = HeaderStyle(
                 h1 = baseTextStyle.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold),
                 h2 = baseTextStyle.copy(fontSize = 28.sp, fontWeight = FontWeight.Bold),
