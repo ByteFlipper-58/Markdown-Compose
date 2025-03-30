@@ -9,7 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import com.byteflipper.markdown_compose.model.ImageLinkNode
-import com.byteflipper.markdown_compose.model.ImageNode
 import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
 
 @Composable
@@ -22,7 +21,8 @@ fun ImageLinkComposable(
     val interactionSource = remember { MutableInteractionSource() }
     val rememberedLinkUrl = remember(node.linkUrl) { node.linkUrl }
 
-    // Запоминаем URL и alt
+    // Create the temporary ImageNode for the inner composable
+    // Using remember here is fine, though direct usage might be slightly simpler
     val rememberedImageUrl = remember(node.imageUrl) { node.imageUrl }
     val rememberedAltText = remember(node.altText) { node.altText }
     val tempImageNode = remember(rememberedAltText, rememberedImageUrl) {
@@ -30,27 +30,26 @@ fun ImageLinkComposable(
     }
 
     Box(
-        modifier = modifier.clickable( // Применяем clickable к Box
-            interactionSource = interactionSource,
-            indication = null,
-            onClick = {
-                Log.d("ImageLinkComposable", "Box Clicked: Открываем URI: $rememberedLinkUrl")
-                try {
-                    uriHandler.openUri(rememberedLinkUrl)
-                } catch (e: Exception) {
-                    Log.e("ImageLinkComposable", "Не удалось открыть URI: $rememberedLinkUrl", e)
+        modifier = modifier
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    Log.d("ImageLinkComposable", "Box Clicked: Opening URI: $rememberedLinkUrl")
+                    try {
+                        uriHandler.openUri(rememberedLinkUrl)
+                    } catch (e: Exception) {
+                        Log.e("ImageLinkComposable", "Failed to open URI: $rememberedLinkUrl", e)
+                    }
                 }
-            }
-        )
+            )
     ) {
-        // В ImageComposable передаем модификатор Modifier (пустой по умолчанию)
-        // или только тот, что пришел из MarkdownText, но *без* clickable
+        // Call ImageComposable, but pass a default Modifier.
+        // ImageComposable will then apply styleSheet.imageStyle.modifier internally.
         ImageComposable(
             node = tempImageNode,
             styleSheet = styleSheet,
-            // modifier = Modifier // <--- Передаем пустой, если не нужны стили из MarkdownText
-            // Либо передаем modifier, но УБЕДИТЕСЬ, что он не содержит clickable здесь
-            modifier = Modifier // ПРОСТО ДЛЯ ТЕСТА! Стили imageStyle будут применены внутри ImageComposable
+            modifier = Modifier
         )
     }
 }

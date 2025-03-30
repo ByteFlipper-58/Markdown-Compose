@@ -4,12 +4,16 @@ import android.util.Log
 import com.byteflipper.markdown_compose.model.*
 
 private const val TAG = "InlineParser"
+private const val DEBUG = false // Toggle to enable/disable verbose logging
 
 /**
  * Object responsible for parsing inline Markdown elements such as links, bold, italic,
  * strikethrough, code spans, images, and image links.
  */
 object InlineParser {
+
+    // Characters that can be escaped in Markdown
+    private const val ESCAPABLE_CHARS = "\\`*_{}[]()#+-.!"
 
     /**
      * Parses inline Markdown elements within a given text string and returns a list of MarkdownNode objects.
@@ -19,96 +23,107 @@ object InlineParser {
      * @return A list of parsed inline MarkdownNode objects (TextNode, BoldTextNode, ImageNode, etc.).
      */
     fun parseInline(text: String): List<MarkdownNode> {
-        Log.d(TAG, "--- Starting parseInline for text: \"$text\" ---")
+        if (DEBUG) Log.d(TAG, "--- Starting parseInline for text: \"$text\" ---")
+
         val nodes = mutableListOf<MarkdownNode>()
-        var currentIndex = 0
         val length = text.length
-        val currentText = StringBuilder()
+        var currentIndex = 0
+        val currentText = StringBuilder(length / 2) // Pre-allocate with estimated capacity
 
         while (currentIndex < length) {
-            Log.v(TAG, "Loop iteration: currentIndex=$currentIndex, remaining='${text.substring(currentIndex)}', currentText=\"$currentText\"")
+            if (DEBUG) Log.v(TAG, "Loop at $currentIndex: '${text.substring(currentIndex)}'")
 
-            var nodeParsed = false
+            // Try to parse a special element
+            val parseResult = parseNextElement(text, currentIndex)
 
-            // Try parsing different inline elements in order of potential precedence/complexity
-            // Backticks first to prevent other syntax inside code spans
-            tryParseCodeSpan(text, currentIndex)?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Images ![]() before Links []() to avoid capturing image alt text as link text
-            tryParseImage(text, currentIndex)?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Links []() (will handle image links internally)
-            tryParseLinkOrImageLink(text, currentIndex)?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Strikethrough ~~...~~
-            tryParseStrikethrough(text, currentIndex)?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Bold **...**
-            tryParseEmphasis(text, currentIndex, "**")?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Bold __...__
-            tryParseEmphasis(text, currentIndex, "__")?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Italic *...* (check after bold)
-            tryParseEmphasis(text, currentIndex, "*")?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            } ?: // Italic _..._ (check after bold)
-            tryParseEmphasis(text, currentIndex, "_")?.let { (node, nextIndex) ->
-                flushText(currentText, nodes)
-                nodes.add(node)
-                currentIndex = nextIndex
-                nodeParsed = true
-            }
-
-
-            if (!nodeParsed) {
-                // If no specific markdown element was parsed, append the character as plain text
+            if (parseResult != null) {
+                // A markdown element was found, add it to the list
+                if (currentText.isNotEmpty()) {
+                    nodes.add(TextNode(currentText.toString()))
+                    currentText.clear()
+                }
+                nodes.add(parseResult.first)
+                currentIndex = parseResult.second
+            } else {
+                // No special element, append to plain text
                 currentText.append(text[currentIndex])
                 currentIndex++
             }
-        } // End while loop
+        }
 
-        flushText(currentText, nodes)
-        Log.d(TAG, "--- Finished parseInline. Total nodes created: ${nodes.size} ---")
+        // Add any remaining text
+        if (currentText.isNotEmpty()) {
+            nodes.add(TextNode(currentText.toString()))
+        }
+
+        if (DEBUG) Log.d(TAG, "--- Finished parseInline. Total nodes: ${nodes.size} ---")
         return nodes
     }
 
-    // --- Private Parsing Helper Functions ---
+    /**
+     * Attempts to parse the next markdown element at the given position.
+     * Returns the parsed node and the next index, or null if no element was found.
+     */
+    private fun parseNextElement(text: String, index: Int): Pair<MarkdownNode, Int>? {
+        if (index >= text.length) return null
 
+        // Try each markdown element in priority order
+        return when {
+            // 1. Escaped character
+            text[index] == '\\' && index + 1 < text.length && ESCAPABLE_CHARS.contains(text[index + 1]) -> {
+                val escapedChar = text[index + 1]
+                Pair(TextNode(escapedChar.toString()), index + 2)
+            }
+
+            // 2. Code span
+            text[index] == '`' -> tryParseCodeSpan(text, index)
+
+            // 3. Link or image link
+            text[index] == '[' -> tryParseLinkOrImageLink(text, index)
+
+            // 4. Image (must check before other elements as it starts with !)
+            index + 1 < text.length && text[index] == '!' && text[index + 1] == '[' ->
+                tryParseImage(text, index)
+
+            // 5. Strikethrough
+            index + 1 < text.length && text[index] == '~' && text[index + 1] == '~' ->
+                tryParseStrikethrough(text, index)
+
+            // 6. Bold (double star or double underscore)
+            index + 1 < text.length && ((text[index] == '*' && text[index + 1] == '*') ||
+                    (text[index] == '_' && text[index + 1] == '_')) -> {
+                val delimiter = text.substring(index, index + 2)
+                tryParseEmphasis(text, index, delimiter, isBold = true)
+            }
+
+            // 7. Italic (single star or single underscore)
+            text[index] == '*' || text[index] == '_' -> {
+                val delimiter = text[index].toString()
+                tryParseEmphasis(text, index, delimiter, isBold = false)
+            }
+
+            // No markdown element found
+            else -> null
+        }
+    }
+
+    /**
+     * Tries to parse an inline code span `code`.
+     */
     private fun tryParseCodeSpan(text: String, startIndex: Int): Pair<CodeNode, Int>? {
         if (startIndex >= text.length || text[startIndex] != '`') return null
 
-        val end = findClosingTag(text, startIndex + 1, "`")
-        if (end != -1) {
-            Log.d(TAG, "Found code span from $startIndex to $end")
-            val codeContent = text.substring(startIndex + 1, end)
-            val node = CodeNode(codeContent, isBlock = false)
-            return Pair(node, end + 1) // New index is after closing tag
-        } else {
-            Log.w(TAG, "Found opening backtick at $startIndex but no closing backtick found.")
-            return null
+        var endIndex = startIndex + 1
+        while (endIndex < text.length) {
+            if (text[endIndex] == '`') {
+                val codeContent = text.substring(startIndex + 1, endIndex).trim()
+                return Pair(CodeNode(codeContent, isBlock = false), endIndex + 1)
+            }
+            endIndex++
         }
+
+        // No closing backtick found
+        return null
     }
 
     /**
@@ -117,193 +132,227 @@ object InlineParser {
     private fun tryParseImage(text: String, startIndex: Int): Pair<ImageNode, Int>? {
         if (!text.startsWith("![", startIndex)) return null
 
-        val altTextEnd = text.indexOf(']', startIndex + 2) // Start search after '!['
-        if (altTextEnd == -1 || altTextEnd + 1 >= text.length || text[altTextEnd + 1] != '(') {
-            //Log.d(TAG, "Image parse: Found '![' at $startIndex but not followed by '](...'")
-            return null // Not an image start
-        }
+        val altTextEnd = findMatchingBracket(text, startIndex + 1, '[', ']')
+        if (altTextEnd == -1 || altTextEnd + 1 >= text.length || text[altTextEnd + 1] != '(') return null
 
-        val urlEnd = text.indexOf(')', altTextEnd + 2) // Start search after ']('
-        if (urlEnd == -1) {
-            Log.d(TAG, "Image parse: Found '![alt](...' at $startIndex but missing closing parenthesis ')' for URL.")
-            return null
-        }
+        val urlEnd = findMatchingBracket(text, altTextEnd + 1, '(', ')')
+        if (urlEnd == -1) return null
 
-        Log.d(TAG, "Found potential image structure ![alt](url).")
         val altText = text.substring(startIndex + 2, altTextEnd)
         val url = text.substring(altTextEnd + 2, urlEnd)
-        Log.i(TAG, ">>> Creating ImageNode: alt=\"$altText\", url=\"$url\"")
-        val node = ImageNode(altText, url)
-        return Pair(node, urlEnd + 1) // New index is after closing parenthesis
-    }
 
+        // Skip empty URLs
+        if (url.isBlank()) return null
+
+        return Pair(ImageNode(altText, url), urlEnd + 1)
+    }
 
     /**
      * Tries parsing a link [text](url) or an image link [![alt](img)](url).
-     * Relies on `tryParseImage` to identify if the inner content is an image.
      */
     private fun tryParseLinkOrImageLink(text: String, startIndex: Int): Pair<MarkdownNode, Int>? {
         if (!text.startsWith("[", startIndex)) return null
 
-        val contentEnd = text.indexOf(']', startIndex + 1)
-        if (contentEnd == -1 || contentEnd + 1 >= text.length || text[contentEnd + 1] != '(') {
-            //Log.d(TAG, "Link parse: Found '[' at $startIndex but not followed by '](...'")
-            return null // Not a link/image link start
-        }
+        val contentEnd = findMatchingBracket(text, startIndex, '[', ']')
+        if (contentEnd == -1 || contentEnd + 1 >= text.length || text[contentEnd + 1] != '(') return null
 
-        val linkUrlEnd = text.indexOf(')', contentEnd + 2) // Start search after ']('
-        if (linkUrlEnd == -1) {
-            Log.d(TAG, "Link parse: Found '[content](...' at $startIndex but missing closing parenthesis ')' for link URL.")
-            return null
-        }
+        val linkUrlEnd = findMatchingBracket(text, contentEnd + 1, '(', ')')
+        if (linkUrlEnd == -1) return null
 
-        // Successfully found the outer link structure: [content](linkUrl)
         val content = text.substring(startIndex + 1, contentEnd)
         val linkUrl = text.substring(contentEnd + 2, linkUrlEnd)
-        val nextIndex = linkUrlEnd + 1
+        val finalNextIndex = linkUrlEnd + 1
 
-        // Now, check if the 'content' is actually an image: ![...](...)
-        tryParseImage(content, 0)?.let { (imageNode, contentNextIndex) ->
-            // Check if the image consumed the *entire* content string
-            if (contentNextIndex == content.length) {
-                Log.i(TAG, ">>> Creating ImageLinkNode: alt=\"${imageNode.altText}\", img=\"${imageNode.url}\", link=\"$linkUrl\"")
-                val node = ImageLinkNode(imageNode.altText, imageNode.url, linkUrl)
-                return Pair(node, nextIndex)
+        // Check if the content is actually an image: ![...](...)
+        val trimmedContent = content.trim()
+
+        if (trimmedContent.startsWith("![")) {
+            // Attempt to recognize image pattern inside link content
+            val altTextEnd = findUnescapedChar(trimmedContent, 2, ']')
+            if (altTextEnd != -1 && altTextEnd + 1 < trimmedContent.length &&
+                trimmedContent[altTextEnd + 1] == '(' &&
+                findMatchingBracket(trimmedContent, altTextEnd + 1, '(', ')') == trimmedContent.length - 1) {
+
+                val imgAltText = trimmedContent.substring(2, altTextEnd)
+                val imgUrl = trimmedContent.substring(altTextEnd + 2, trimmedContent.length - 1)
+
+                return Pair(ImageLinkNode(imgAltText, imgUrl, linkUrl), finalNextIndex)
             }
-            // If content contains an image but also other text, treat as regular link for now
-            Log.d(TAG, "Link content contains an image but also other text. Treating as simple LinkNode.")
         }
 
-        // If content is not an image (or not *only* an image), parse as regular Link
-        Log.i(TAG, ">>> Creating LinkNode: [$content]($linkUrl)")
-        val node = LinkNode(content, linkUrl) // Content is treated as plain text for the link label
-        return Pair(node, nextIndex)
+        // Default: create regular link node
+        return Pair(LinkNode(content, linkUrl), finalNextIndex)
     }
 
+    /**
+     * Tries parsing strikethrough ~~text~~.
+     */
     private fun tryParseStrikethrough(text: String, startIndex: Int): Pair<StrikethroughTextNode, Int>? {
         val delimiter = "~~"
         if (!text.startsWith(delimiter, startIndex)) return null
 
         val end = findClosingTag(text, startIndex + delimiter.length, delimiter)
         if (end != -1) {
-            Log.d(TAG, "Found strikethrough from $startIndex to $end")
             val content = text.substring(startIndex + delimiter.length, end)
-            val node = StrikethroughTextNode(content)
-            return Pair(node, end + delimiter.length)
-        } else {
-            Log.w(TAG, "Found opening strikethrough '$delimiter' at $startIndex but no closing tag.")
-            return null
+            return Pair(StrikethroughTextNode(content), end + delimiter.length)
         }
+
+        return null
     }
 
-    /** Tries parsing bold (**, __) or italic (*, _) */
-    private fun tryParseEmphasis(text: String, startIndex: Int, delimiter: String): Pair<MarkdownNode, Int>? {
+    /**
+     * Tries parsing bold (**, __) or italic (*, _) emphasis.
+     */
+    private fun tryParseEmphasis(
+        text: String,
+        startIndex: Int,
+        delimiter: String,
+        isBold: Boolean
+    ): Pair<MarkdownNode, Int>? {
         if (!text.startsWith(delimiter, startIndex)) return null
 
-        // Avoid matching * inside ** or _ inside __ inadvertently by the caller logic (check longer delimiter first)
-        if ((delimiter == "*" && text.startsWith("**", startIndex)) || (delimiter == "_" && text.startsWith("__", startIndex))) {
-            Log.v(TAG, "Emphasis: Skipping '$delimiter' at $startIndex because longer delimiter found.")
-            return null // Let the double-delimiter check handle this
+        // For italic (single char delimiter), avoid matching inside bold
+        if (delimiter.length == 1 && startIndex + 1 < text.length &&
+            text[startIndex + 1] == delimiter[0]) {
+            return null  // Let the double delimiter rule handle it
         }
 
         val end = findClosingTag(text, startIndex + delimiter.length, delimiter)
         if (end != -1) {
-            Log.d(TAG, "Found emphasis '$delimiter' from $startIndex to $end")
             val content = text.substring(startIndex + delimiter.length, end)
-            val node: MarkdownNode = when (delimiter) {
-                "**", "__" -> BoldTextNode(content)
-                "*", "_" -> ItalicTextNode(content)
-                else -> return null // Should not happen
-            }
+            val node = if (isBold) BoldTextNode(content) else ItalicTextNode(content)
             return Pair(node, end + delimiter.length)
-        } else {
-            Log.w(TAG, "Found opening emphasis '$delimiter' at $startIndex but no closing tag.")
-            return null
         }
-    }
 
-
-    // --- Utility Functions ---
-
-    /**
-     * Appends the accumulated text in `currentText` as a `TextNode` to the `nodes` list
-     * and clears the `currentText` builder. Only adds if `currentText` is not empty.
-     */
-    private fun flushText(currentText: StringBuilder, nodes: MutableList<MarkdownNode>) {
-        if (currentText.isNotEmpty()) {
-            val textToAdd = currentText.toString()
-            Log.d(TAG, "Flushing TextNode with content: \"$textToAdd\"")
-            nodes.add(TextNode(textToAdd))
-            currentText.clear()
-        } else {
-            Log.v(TAG, "flushText called but currentText is empty.")
-        }
+        return null
     }
 
     /**
-     * Finds the next occurrence of a closing `tag` starting from `startIndex`.
-     * Skips matching tags if they appear within an inline code span (` `).
-     * Does not handle escaped tags (e.g., \`).
-     * IMPORTANT: This does NOT handle nested tags of the same type (e.g., *italic* inside *italic*).
+     * Finds the index of the next unescaped occurrence of a character.
      */
-    private fun findClosingTag(text: String, startIndex: Int, tag: String): Int {
+    private fun findUnescapedChar(text: String, startIndex: Int, targetChar: Char): Int {
         var i = startIndex
-        Log.v(TAG, "findClosingTag called: text='${text.substring(startIndex)}', startIndex=$startIndex, tag=\"$tag\"")
+        while (i < text.length) {
+            if (text[i] == '\\' && i + 1 < text.length) {
+                i += 2  // Skip escaped char
+            } else if (text[i] == targetChar) {
+                return i
+            } else {
+                i++
+            }
+        }
+        return -1
+    }
 
-        // Backtick search is simple - find the very next one.
-        if (tag == "`") {
-            val nextBacktick = text.indexOf('`', startIndex)
-            Log.v(TAG, "findClosingTag for '`': result=$nextBacktick")
-            return nextBacktick
+    /**
+     * Finds the index of the next occurrence of a closing `tag`.
+     * Skips escaped characters and code spans.
+     */
+    private fun findClosingTag(text: String, searchStartIndex: Int, tag: String): Int {
+        var i = searchStartIndex
+        var inCodeSpan = false
+
+        while (i < text.length) {
+            // Handle escape character
+            if (text[i] == '\\' && i + 1 < text.length) {
+                i += 2  // Skip escaped char
+                continue
+            }
+
+            // Handle code spans
+            if (text[i] == '`') {
+                inCodeSpan = !inCodeSpan
+                i++
+                continue
+            }
+
+            // Skip processing inside code spans
+            if (inCodeSpan) {
+                i++
+                continue
+            }
+
+            // Check for the closing tag
+            if (text.startsWith(tag, i)) {
+                // For emphasis, apply validation rules
+                if ((tag == "*" || tag == "_") && !isValidEmphasisDelimiter(text, i, tag)) {
+                    i += tag.length
+                    continue
+                }
+
+                return i
+            }
+
+            i++
         }
 
+        return -1  // Tag not found
+    }
+
+    /**
+     * Validates emphasis delimiter according to CommonMark rules (simplified).
+     */
+    private fun isValidEmphasisDelimiter(text: String, index: Int, delimiter: String): Boolean {
+        // Simplified rule: emphasis delimiter is valid if it's not surrounded by spaces
+        // (unless at start/end of text)
+        val previousChar = if (index > 0) text[index - 1] else ' '
+        val nextIndex = index + delimiter.length
+        val nextChar = if (nextIndex < text.length) text[nextIndex] else ' '
+
+        // Both surrounded by whitespace = invalid
+        if (previousChar.isWhitespace() && nextChar.isWhitespace()) {
+            return false
+        }
+
+        return true
+    }
+
+    /**
+     * Finds the matching closing bracket, handling nesting, escapes, and code spans.
+     */
+    private fun findMatchingBracket(text: String, openingBracketIndex: Int, openChar: Char, closeChar: Char): Int {
+        if (openingBracketIndex < 0 || openingBracketIndex >= text.length ||
+            text[openingBracketIndex] != openChar) {
+            return -1
+        }
+
+        var balance = 1  // Start with 1 for the opening bracket
+        var i = openingBracketIndex + 1
         var inCodeSpan = false
+
         while (i < text.length) {
+            // Handle escape character
+            if (text[i] == '\\' && i + 1 < text.length) {
+                i += 2  // Skip escaped char
+                continue
+            }
+
+            // Handle code spans
             if (text[i] == '`') {
-                // Find closing backtick for this code span to properly skip its content
-                val codeSpanEnd = text.indexOf('`', i + 1)
-                if (codeSpanEnd != -1) {
-                    Log.v(TAG, "findClosingTag: Entering code span at $i, skipping until $codeSpanEnd")
-                    i = codeSpanEnd + 1 // Move past the closing backtick
-                    continue // Continue the outer loop
-                } else {
-                    // Unterminated code span, stop searching for the original tag
-                    Log.v(TAG, "findClosingTag: Unterminated code span found starting at $i. Aborting search for '$tag'.")
-                    return -1
+                inCodeSpan = !inCodeSpan
+                i++
+                continue
+            }
+
+            // Skip bracket processing inside code spans
+            if (inCodeSpan) {
+                i++
+                continue
+            }
+
+            // Check for brackets
+            if (text[i] == openChar) {
+                balance++
+            } else if (text[i] == closeChar) {
+                balance--
+                if (balance == 0) {
+                    return i  // Found matching bracket
                 }
             }
 
-            // Check for the target tag if not inside a (skipped) code span
-            if (text.startsWith(tag, i)) {
-                val isEscaped = i > 0 && text[i-1] == '\\' // Basic escape check
-                if (!isEscaped) {
-                    // Basic whitespace check: closing tag shouldn't be preceded by space,
-                    // and shouldn't be followed by alphanumeric (for *, _) if it's the same as the start
-                    // This is a simplification of common markdown rules.
-                    val spaceBefore = i > startIndex && text[i-1].isWhitespace()
-                    val alphaNumAfter = i + tag.length < text.length && text[i + tag.length].isLetterOrDigit()
-
-                    // Rule: '*' and '_' need non-space before OR non-alphanum after to be valid closing tags.
-                    val isValidEmphasisClosing = (tag == "*" || tag == "_") && (!spaceBefore || !alphaNumAfter)
-
-                    // Rule: '**', '__', '~~' are generally less strict about surrounding whitespace/chars.
-                    val isValidDelimiterClosing = tag != "*" && tag != "_"
-
-                    if (isValidEmphasisClosing || isValidDelimiterClosing) {
-                        Log.v(TAG, "findClosingTag: Found valid non-escaped tag '$tag' at index $i")
-                        return i
-                    } else {
-                        Log.v(TAG, "findClosingTag: Found tag '$tag' at index $i, but invalid surrounding chars.")
-                    }
-
-                } else {
-                    Log.v(TAG, "findClosingTag: Found tag '$tag' at index $i, but it was escaped.")
-                }
-            }
             i++
-        } // End while
+        }
 
-        Log.v(TAG, "findClosingTag: Reached end of text without finding tag '$tag'. Returning -1.")
-        return -1
+        return -1  // No matching bracket found
     }
 }

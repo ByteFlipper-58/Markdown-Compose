@@ -1,7 +1,9 @@
 // File: markdown-compose/src/main/java/com/byteflipper/markdown_compose/parser/MarkdownParser.kt
 package com.byteflipper.markdown_compose.parser
 
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.byteflipper.markdown_compose.model.*
 
 private const val TAG = "MarkdownParser"
@@ -19,6 +21,7 @@ object MarkdownParser {
      * @param input The raw Markdown input as a string.
      * @return A list of parsed MarkdownNode objects.
      */
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     fun parse(input: String): List<MarkdownNode> {
         return try {
             Log.d(TAG, "Starting markdown parsing")
