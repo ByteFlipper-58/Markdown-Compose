@@ -12,6 +12,8 @@ private const val DEBUG = false // Toggle to enable/disable verbose logging
  */
 object InlineParser {
 
+    private val footnoteRefRegex = Regex("""\[\^([^\]\s]+)]""") // [^identifier] (no spaces in identifier)
+
     // Characters that can be escaped in Markdown
     private const val ESCAPABLE_CHARS = "\\`*_{}[]()#+-.!"
 
@@ -78,25 +80,29 @@ object InlineParser {
             // 2. Code span
             text[index] == '`' -> tryParseCodeSpan(text, index)
 
-            // 3. Link or image link
+            // 3. Footnote Reference (НОВОЕ - проверяем *перед* обычными ссылками/картинками)
+            text[index] == '[' && text.getOrNull(index + 1) == '^' ->
+                tryParseFootnoteReference(text, index)
+
+            // 4. Link or image link
             text[index] == '[' -> tryParseLinkOrImageLink(text, index)
 
-            // 4. Image (must check before other elements as it starts with !)
+            // 5. Image (must check before other elements as it starts with !)
             index + 1 < text.length && text[index] == '!' && text[index + 1] == '[' ->
                 tryParseImage(text, index)
 
-            // 5. Strikethrough
+            // 6. Strikethrough
             index + 1 < text.length && text[index] == '~' && text[index + 1] == '~' ->
                 tryParseStrikethrough(text, index)
 
-            // 6. Bold (double star or double underscore)
+            // 7. Bold (double star or double underscore)
             index + 1 < text.length && ((text[index] == '*' && text[index + 1] == '*') ||
                     (text[index] == '_' && text[index + 1] == '_')) -> {
                 val delimiter = text.substring(index, index + 2)
                 tryParseEmphasis(text, index, delimiter, isBold = true)
             }
 
-            // 7. Italic (single star or single underscore)
+            // 8. Italic (single star or single underscore)
             text[index] == '*' || text[index] == '_' -> {
                 val delimiter = text[index].toString()
                 tryParseEmphasis(text, index, delimiter, isBold = false)
@@ -226,6 +232,25 @@ object InlineParser {
 
         return null
     }
+
+    /**
+     * Tries to parse a footnote reference like [^identifier].
+     */
+    private fun tryParseFootnoteReference(text: String, startIndex: Int): Pair<FootnoteReferenceNode, Int>? {
+        // Match the pattern starting from the current index
+        val matchResult = footnoteRefRegex.find(text, startIndex)
+
+        // Check if the match starts exactly at our startIndex
+        if (matchResult != null && matchResult.range.first == startIndex) {
+            val identifier = matchResult.groupValues[1]
+            val nextIndex = matchResult.range.last + 1
+            if (DEBUG) Log.d(TAG, "Parsed Footnote Reference: identifier='$identifier', nextIndex=$nextIndex")
+            return Pair(FootnoteReferenceNode(identifier), nextIndex)
+        }
+        if (DEBUG) Log.v(TAG, "Potential footnote ref start '[' found, but pattern mismatch at index $startIndex")
+        return null // Didn't match correctly at the start index
+    }
+
 
     /**
      * Finds the index of the next unescaped occurrence of a character.

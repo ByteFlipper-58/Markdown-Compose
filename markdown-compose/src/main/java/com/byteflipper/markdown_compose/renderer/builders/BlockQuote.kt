@@ -1,9 +1,10 @@
+// markdown-compose/src/main/java/com/byteflipper/markdown_compose/renderer/builders/BlockQuote.kt
 package com.byteflipper.markdown_compose.renderer.builders
 
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.ClickableText // Import ClickableText
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -15,95 +16,101 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.withStyle
 import com.byteflipper.markdown_compose.model.BlockQuoteNode
 import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
+import com.byteflipper.markdown_compose.renderer.FOOTNOTE_REF_TAG // Import footnote tag
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 
 private const val TAG = "BlockQuoteRenderer"
 
 object BlockQuote {
     /**
-     * Renders block quote *content* into an AnnotatedString builder.
-     * This is used when the block quote itself isn't the top-level element being rendered.
+     * Renders block quote content into an AnnotatedString builder.
+     * Ensures footnote map is passed down for correct nested rendering.
      */
-    fun render(builder: AnnotatedString.Builder, node: BlockQuoteNode, styleSheet: MarkdownStyleSheet) {
+    fun render(
+        builder: AnnotatedString.Builder,
+        node: BlockQuoteNode,
+        styleSheet: MarkdownStyleSheet,
+        footnoteReferenceMap: Map<String, Int>? // Add map parameter
+    ) {
         val blockQuoteStyle = styleSheet.blockQuoteStyle
-        val contentStyleSheet = styleSheet.copy(textStyle = blockQuoteStyle.textStyle) // Apply BQ text style to children
+        // Use the quote's text style as the base for its content
+        val contentStyleSheet = styleSheet.copy(textStyle = blockQuoteStyle.textStyle)
 
         with(builder) {
             withStyle(blockQuoteStyle.textStyle.toSpanStyle()) {
                 node.content.forEach { contentNode ->
-                    MarkdownRenderer.renderNode(this, contentNode, contentStyleSheet)
+                    // Pass the map down when rendering children
+                    MarkdownRenderer.renderNode(this, contentNode, contentStyleSheet, footnoteReferenceMap)
                 }
             }
         }
     }
 }
 
-/**
- * Renders a BlockQuoteNode using a dedicated Composable with background, padding, vertical bar,
- * and clickable link support.
- *
- * @param node The BlockQuoteNode to render.
- * @param styleSheet The stylesheet.
- * @param modifier Modifier for the outer Box.
- * @param linkHandler The callback to handle link clicks within the block quote.
- */
+/** BlockQuoteComposable remains unchanged as it already passed the map correctly to MarkdownRenderer.render */
 @Composable
 fun BlockQuoteComposable(
     node: BlockQuoteNode,
     styleSheet: MarkdownStyleSheet,
     modifier: Modifier = Modifier,
-    linkHandler: (url: String) -> Unit // Pass handler
+    footnoteReferenceMap: Map<String, Int>?,
+    linkHandler: (url: String) -> Unit,
+    onFootnoteReferenceClick: ((identifier: String) -> Unit)?
 ) {
     val blockQuoteStyle = styleSheet.blockQuoteStyle
     val barColor = blockQuoteStyle.verticalBarColor
     val barWidthPx = blockQuoteStyle.verticalBarWidth.value * LocalDensity.current.density
 
-    // Prepare the text content once
+    // This call correctly passes the map already
     val contentString = MarkdownRenderer.render(
         node.content,
-        styleSheet.copy(textStyle = blockQuoteStyle.textStyle) // Apply BQ text style to children
+        styleSheet.copy(textStyle = blockQuoteStyle.textStyle),
+        footnoteReferenceMap
     )
 
     Box(
         modifier = modifier
+            // ... (drawing and padding modifiers as before) ...
             .fillMaxWidth()
-            .then(
+            .then( // Apply vertical bar modifier if needed
                 if (barColor != null && barWidthPx > 0f) {
                     Modifier.drawBehind {
                         drawLine(
                             brush = SolidColor(barColor),
-                            start = Offset(barWidthPx / 2f, 0f),
+                            start = Offset(barWidthPx / 2f, 0f), // Center of the bar stroke
                             end = Offset(barWidthPx / 2f, size.height),
                             strokeWidth = barWidthPx
                         )
                     }
-                } else Modifier
+                } else Modifier // Otherwise, no bar drawing
             )
-            .padding(
+            .padding( // Outer padding, includes space for the bar
                 start = if (barColor != null) blockQuoteStyle.verticalBarWidth + blockQuoteStyle.padding else blockQuoteStyle.padding,
-                top = blockQuoteStyle.padding / 2, // Adjust padding if needed
+                top = blockQuoteStyle.padding / 2,
                 end = blockQuoteStyle.padding,
                 bottom = blockQuoteStyle.padding / 2
             )
-            .then(
+            .then( // Apply background modifier if needed
                 if (blockQuoteStyle.backgroundColor != null && blockQuoteStyle.backgroundColor != Color.Transparent) {
                     Modifier.background(blockQuoteStyle.backgroundColor)
-                } else Modifier
+                } else Modifier // Otherwise, no background
             )
-            .padding(blockQuoteStyle.padding) // Apply inner padding AFTER background/border
+            .padding(blockQuoteStyle.padding) // Apply inner padding AFTER background/bar space is accounted for
 
     ) {
-        // Use ClickableText to render the content
         ClickableText(
             text = contentString,
-            style = blockQuoteStyle.textStyle, // Apply the BQ's specific text style
+            style = blockQuoteStyle.textStyle,
             onClick = { offset ->
-                contentString
-                    .getStringAnnotations(Link.URL_TAG, offset, offset)
-                    .firstOrNull()?.let { annotation ->
-                        Log.i(TAG, "Link clicked in BlockQuote: ${annotation.item}")
-                        linkHandler(annotation.item) // Use the passed handler
-                    }
+                contentString.getStringAnnotations(Link.URL_TAG, offset, offset).firstOrNull()?.let {
+                    Log.i(TAG, "Link clicked in BlockQuote: ${it.item}")
+                    linkHandler(it.item)
+                    return@ClickableText
+                }
+                contentString.getStringAnnotations(FOOTNOTE_REF_TAG, offset, offset).firstOrNull()?.let {
+                    Log.i(TAG, "Footnote ref [^${it.item}] clicked in BlockQuote")
+                    onFootnoteReferenceClick?.invoke(it.item)
+                }
             }
         )
     }

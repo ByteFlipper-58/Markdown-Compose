@@ -6,21 +6,25 @@ import com.byteflipper.markdown_compose.model.HeaderNode
 import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 
-/**
- * Object responsible for rendering Markdown header nodes using styles from MarkdownStyleSheet.
- */
 object Header {
     /**
-     * Renders a Markdown header node into an [AnnotatedString.Builder] with the appropriate styling
-     * based on the header level and the provided [MarkdownStyleSheet].
+     * Renders a Markdown header node into an [AnnotatedString.Builder].
+     * Ensures the footnote map is passed down to render nested references correctly.
      *
-     * @param builder The [AnnotatedString.Builder] where the header text will be appended.
+     * @param builder The [AnnotatedString.Builder] to append to.
      * @param node The [HeaderNode] containing the header content and level.
-     * @param styleSheet The [MarkdownStyleSheet] defining the visual styles.
+     * @param styleSheet The [MarkdownStyleSheet] defining visual styles.
+     * @param footnoteReferenceMap Map from footnote ID to display index.
      */
-    fun render(builder: AnnotatedString.Builder, node: HeaderNode, styleSheet: MarkdownStyleSheet) {
+    fun render(
+        builder: AnnotatedString.Builder,
+        node: HeaderNode,
+        styleSheet: MarkdownStyleSheet,
+        footnoteReferenceMap: Map<String, Int>?
+    ) {
         val headerStyle = styleSheet.headerStyle
 
+        // Determine the specific text style based on the header level
         val textStyle = when (node.level) {
             1 -> headerStyle.h1
             2 -> headerStyle.h2
@@ -28,15 +32,17 @@ object Header {
             4 -> headerStyle.h4
             5 -> headerStyle.h5
             6 -> headerStyle.h6
-            else -> styleSheet.textStyle
+            else -> styleSheet.textStyle // Fallback to base style if level is invalid
         }
 
-        builder.withStyle(
-            textStyle.toSpanStyle()
-        ) {
-            val contentStyleSheet = styleSheet.copy(textStyle = textStyle)
+        // Use the determined header style as the base for its content rendering
+        val contentStyleSheet = styleSheet.copy(textStyle = textStyle)
+
+        // Apply the header style and render the content
+        builder.withStyle(textStyle.toSpanStyle()) {
+            // Pass the map down when rendering child nodes within the header
             node.content.forEach { contentNode ->
-                MarkdownRenderer.renderNode(this, contentNode, contentStyleSheet)
+                MarkdownRenderer.renderNode(this, contentNode, contentStyleSheet, footnoteReferenceMap)
             }
         }
     }

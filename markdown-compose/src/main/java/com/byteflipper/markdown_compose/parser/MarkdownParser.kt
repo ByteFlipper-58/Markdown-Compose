@@ -16,7 +16,8 @@ object MarkdownParser {
 
     /**
      * Parses the provided Markdown input and returns a list of MarkdownNode objects representing
-     * the parsed structure. In case of an error, it logs the error and returns the input as plain text.
+     * the parsed structure, potentially including a FootnoteDefinitionsBlockNode at the end.
+     * In case of an error, it logs the error and returns the input as plain text.
      *
      * @param input The raw Markdown input as a string.
      * @return A list of parsed MarkdownNode objects.
@@ -25,14 +26,23 @@ object MarkdownParser {
     fun parse(input: String): List<MarkdownNode> {
         return try {
             Log.d(TAG, "Starting markdown parsing")
-            // Parsing the input using BlockParser to handle block-level elements.
-            val result = BlockParser.parseBlocks(input)
-            Log.d(TAG, "Completed markdown parsing successfully")
-            result
+            // Parsing the input using BlockParser to handle block-level elements and definitions.
+            val parseResult = BlockParser.parseBlocks(input)
+            val bodyNodes = parseResult.nodes.toMutableList()
+            val definitions = parseResult.definitions
+
+            // If definitions were found, add the special block node at the end.
+            if (definitions.isNotEmpty()) {
+                bodyNodes.add(FootnoteDefinitionsBlockNode(definitions))
+                Log.d(TAG, "Added FootnoteDefinitionsBlockNode with ${definitions.size} definitions.")
+            }
+
+            Log.d(TAG, "Completed markdown parsing successfully. Total nodes: ${bodyNodes.size}")
+            bodyNodes.toList() // Return immutable list
         } catch (e: Exception) {
             // In case of an error, log the exception and return the input as plain text.
             Log.e(TAG, "Error parsing markdown: ${e.message}", e)
-            listOf(TextNode(input))
+            listOf(TextNode(input)) // Fallback to plain text
         }
     }
 }

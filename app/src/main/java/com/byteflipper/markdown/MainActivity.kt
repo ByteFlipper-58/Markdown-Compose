@@ -1,27 +1,38 @@
 package com.byteflipper.markdown
 
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.ScrollState // Импорт ScrollState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollState // Импорт rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.byteflipper.markdown.ui.theme.MarkdownComposeSampleTheme
 import com.byteflipper.markdown_compose.MarkdownText
+import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
 import com.byteflipper.markdown_compose.model.defaultMarkdownStyleSheet
+import kotlinx.coroutines.launch // Импорт для корутин
 
 class MainActivity : ComponentActivity() {
+    // RequiresApi needed because MarkdownText now requires it due to the parser change
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -33,11 +44,19 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Annotation required because this Composable calls others that require it
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Default Style", "Custom Style")
+
+    // --- Create states here ---
+    val scrollState = rememberScrollState() // State for the scroll
+    // Use SnapshotStateMap for integration with Compose State
+    val footnotePositions = remember { mutableStateMapOf<String, Float>() }
+    val coroutineScope = rememberCoroutineScope() // For launching scroll animation
 
     Scaffold(
         topBar = {
@@ -56,63 +75,90 @@ fun MainScreen() {
                 }
             }
 
+            // --- Wrap in a Scrollable Column ---
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
-                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp) // Horizontal padding here
+                    .verticalScroll(scrollState) // APPLY SCROLL STATE
+                    .padding(vertical = 16.dp)   // Vertical padding inside for content margins
             ) {
                 when (selectedTab) {
-                    0 -> DefaultMarkdownView()
-                    1 -> CustomMarkdownView()
+                    // Pass states to both views
+                    0 -> DefaultMarkdownView(footnotePositions, scrollState)
+                    1 -> CustomMarkdownView(footnotePositions, scrollState)
                 }
-                Spacer(Modifier.height(50.dp))
+                Spacer(Modifier.height(50.dp)) // Bottom spacer
             }
         }
     }
 }
 
+// Receives states as parameters
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Composable
-fun DefaultMarkdownView() {
+fun DefaultMarkdownView(
+    footnotePositions: MutableMap<String, Float>, // Map for MarkdownText to update
+    scrollState: ScrollState // State to perform scroll
+) {
+    val coroutineScope = rememberCoroutineScope()
     MarkdownText(
         markdown = SampleMarkdown.content,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp)
+        modifier = Modifier.fillMaxWidth().padding(8.dp), // Inner padding
+        footnotePositions = footnotePositions, // Pass map
+        onLinkClick = { url ->
+            Log.d("DefaultMarkdownView", "Link clicked: $url")
+            // Handle link click if needed (default handler already opens browser)
+        },
+        onFootnoteReferenceClick = { identifier ->
+            Log.d("DefaultMarkdownView", "Footnote reference clicked: [^$identifier]")
+            // --- Scroll Logic ---
+            val position = footnotePositions[identifier]
+            if (position != null) {
+                Log.d("DefaultMarkdownView", "Scrolling to position: $position for id: $identifier")
+                coroutineScope.launch {
+                    scrollState.animateScrollTo(position.toInt()) // Scroll to the measured Y position
+                }
+            } else {
+                Log.w("DefaultMarkdownView", "Position not found for footnote id: $identifier")
+            }
+        }
     )
 }
 
+// Receives states as parameters
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Composable
-fun CustomMarkdownView() {
-    // Get default styles as a starting point
+fun CustomMarkdownView(
+    footnotePositions: MutableMap<String, Float>,
+    scrollState: ScrollState
+) {
+    val coroutineScope = rememberCoroutineScope()
     val defaults = defaultMarkdownStyleSheet()
-
-    // Create custom styles based on defaults
+    // --- Create customStyleSheet (as before) ---
     val customStyleSheet = defaults.copy(
         textStyle = defaults.textStyle.copy(fontSize = 15.sp, lineHeight = 22.sp),
         headerStyle = defaults.headerStyle.copy(
             h1 = defaults.headerStyle.h1.copy(color = MaterialTheme.colorScheme.tertiary),
             h2 = defaults.headerStyle.h2.copy(color = MaterialTheme.colorScheme.secondary),
-            bottomPadding = 12.dp // Increased padding after headers
+            bottomPadding = 12.dp
         ),
         listStyle = defaults.listStyle.copy(
-            indentPadding = 12.dp, // More indent for nested lists
-            bulletChars = listOf("* ", "+ ", "- "), // Different bullet styles
-            itemSpacing = 6.dp // Slightly more space between list items
-
+            indentPadding = 12.dp,
+            bulletChars = listOf("* ", "+ ", "- "),
+            itemSpacing = 6.dp
         ),
         taskListItemStyle = defaults.taskListItemStyle.copy(
-            checkedTextStyle = SpanStyle( // Custom style for checked items text
+            checkedTextStyle = SpanStyle(
                 textDecoration = TextDecoration.LineThrough,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) // Dimmer color
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
-            // uncheckedTextStyle remains null (inherits from baseTextStyle)
         ),
         tableStyle = defaults.tableStyle.copy(
             borderColor = MaterialTheme.colorScheme.primary,
-            borderThickness = 2.dp, // Thicker border
-            cellPadding = 10.dp, // More padding in cells
-            outerBorderShape = RoundedCornerShape(8.dp) // Rounded corners!
+            borderThickness = 2.dp,
+            cellPadding = 10.dp,
+            outerBorderShape = RoundedCornerShape(8.dp)
         ),
         horizontalRuleStyle = defaults.horizontalRuleStyle.copy(
             color = MaterialTheme.colorScheme.error,
@@ -125,31 +171,28 @@ fun CustomMarkdownView() {
             padding = 12.dp
         ),
         codeBlockStyle = defaults.codeBlockStyle.copy(
-            modifier = Modifier.clip(RoundedCornerShape(8.dp)), // Rounded corners for the whole block
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)),
             textStyle = defaults.codeBlockStyle.textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-            codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f), // Semi-transparent outer bg
-            // Language Label customization
+            codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
             showLanguageLabel = true,
             languageLabelTextStyle = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.primary),
-            languageLabelBackground = MaterialTheme.colorScheme.surfaceVariant, // Match outer bg
+            languageLabelBackground = MaterialTheme.colorScheme.surfaceVariant,
             languageLabelPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            // Info Bar customization
             showInfoBar = true,
             infoBarTextStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-            infoBarBackground = MaterialTheme.colorScheme.surfaceVariant, // Match outer bg
+            infoBarBackground = MaterialTheme.colorScheme.surfaceVariant,
             infoBarPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             showCopyButton = true,
             copyIconTint = MaterialTheme.colorScheme.primary,
             showLineCount = true,
             showCharCount = true
         ),
-        // --- Inline Code Style (using existing property) ---
         inlineCodeStyle = defaults.inlineCodeStyle.copy(
             background = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
         ),
         linkStyle = defaults.linkStyle.copy(
             color = MaterialTheme.colorScheme.secondary,
-            textDecoration = TextDecoration.Underline // Links underlined
+            textDecoration = TextDecoration.Underline
         ),
         strikethroughTextStyle = defaults.strikethroughTextStyle.copy(
             color = MaterialTheme.colorScheme.error
@@ -160,6 +203,18 @@ fun CustomMarkdownView() {
         italicTextStyle = defaults.italicTextStyle.copy(
             color = MaterialTheme.colorScheme.secondary
         ),
+        // --- Custom Footnote Styles ---
+        footnoteReferenceStyle = defaults.footnoteReferenceStyle.copy(
+            color = MaterialTheme.colorScheme.secondary,
+            baselineShift = BaselineShift.None, // Keep it on baseline
+            textDecoration = TextDecoration.Underline // Underline the ref number
+        ),
+        footnoteDefinitionStyle = defaults.footnoteDefinitionStyle.copy(
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp
+        ),
+        footnoteBlockPadding = 24.dp,
+        // --- Spacing ---
         blockSpacing = 20.dp,
         lineBreakSpacing = 10.dp
     )
@@ -167,15 +222,30 @@ fun CustomMarkdownView() {
     MarkdownText(
         markdown = SampleMarkdown.content,
         styleSheet = customStyleSheet,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp)
+        modifier = Modifier.fillMaxWidth().padding(8.dp),
+        footnotePositions = footnotePositions, // Pass map
+        onLinkClick = { url ->
+            Log.d("CustomMarkdownView", "Link clicked: $url")
+        },
+        onFootnoteReferenceClick = { identifier ->
+            Log.d("CustomMarkdownView", "Footnote reference clicked: [^$identifier]")
+            // --- Scroll Logic ---
+            val position = footnotePositions[identifier]
+            if (position != null) {
+                Log.d("CustomMarkdownView", "Scrolling to position: $position for id: $identifier")
+                coroutineScope.launch {
+                    scrollState.animateScrollTo(position.toInt())
+                }
+            } else {
+                Log.w("CustomMarkdownView", "Position not found for footnote id: $identifier")
+            }
+        }
     )
 }
 
 
+// --- SampleMarkdown object (with extra paragraphs for scrolling) ---
 object SampleMarkdown {
-    // Updated sample content with code blocks
     val content = """
         # Привет, Мир!
         ## Это Markdown
@@ -185,12 +255,15 @@ object SampleMarkdown {
         Это обычный текст параграфа с **жирным**, *курсивом* и ~~зачеркнутым~~ текстом.
         А также `inline code`.
 
+        Вот пример сноски[^1]. Вот еще одна[^примечание]. Можно ссылаться на ту же сноску[^1] несколько раз.
+        Неопределенная сноска[^missing] будет просто текстом.
+
         ---
 
         **Неупорядоченный список:**
         - ✅ Поддержка заголовков
-        - ✅ Списков
-            - Вложенный элемент 1
+        - ✅ Списков [^1]
+            - Вложенный элемент 1 со сноской [^примечание].
             - Вложенный элемент 2
         - ✅ **Жирного** и *курсива*
 
@@ -200,10 +273,10 @@ object SampleMarkdown {
             1. Вложенный нумерованный 1
             2. Вложенный нумерованный 2
             3. [Ссылка на ByteFlipper](https://byteflipper.web.app/)
-        3. Третий пункт
-        
+        3. Третий пункт со сноской[^третий].
+
         **Списки задач (Checkboxes):**
-        - [x] Завершённая задача
+        - [x] Завершённая задача [^1]
         - [ ] Невыполненная задача
         - [X] Другая завершённая (Caps X)
             - [ ] Вложенная невыполненная
@@ -213,14 +286,14 @@ object SampleMarkdown {
 
         > Это блочная цитата.
         > Она может содержать **форматирование** и *курсив*.
-        > И даже несколько строк.
+        > И даже несколько строк, включая сноску[^примечание].
 
         ### Блоки Кода
 
         **Блок кода без языка:**
         ```
         fun main() {
-            println("Hello without language")
+            println("Hello without language") 
         }
         ```
 
@@ -253,11 +326,11 @@ object SampleMarkdown {
         | Заголовок 1 | Заголовок 2 | Заголовок 3 |
         |-------------|:-----------:|------------:|
         | Данные 1    | Центр 2     | Справа 3    |
-        | Данные 4    | Центр 5     | Справа 6    |
+        | Данные 4    | Центр 5[^примечание]| Справа 6    |
         | `Код` в яч. | **Жирный**  | *Курсив*    |
 
         ---
-        
+
         ## ФОТАЧКИ
 
         Простое изображение:
@@ -265,28 +338,35 @@ object SampleMarkdown {
 
         Изображение-ссылка:
         [![GitHub Logo](https://cdn-icons-png.flaticon.com/512/1509/1509974.png)](https://github.com)
-        
+
         Конец примера.
         Еще один параграф текста для проверки отступов.
+
+        [^1]: Это определение **первой** сноски. Она может содержать *форматирование*, [ссылку](https://example.com) и даже другую сноску[^примечание].
+        [^примечание]: Это вторая сноска. Она также содержит `код`. Клик на [^1] здесь тоже сработает.
+        [^третий]: Определение для третьей сноски. Длинный текст, чтобы проверить высоту.
         """.trimIndent()
 }
 
 
+// --- Preview Functions ---
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Preview(showBackground = true, name = "Light Mode Preview")
 @Composable
 fun MainScreenPreviewLight() {
     MarkdownComposeSampleTheme(darkTheme = false) {
-        Surface { // Wrap in Surface for background color
+        Surface {
             MainScreen()
         }
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Preview(showBackground = true, name = "Dark Mode Preview")
 @Composable
 fun MainScreenPreviewDark() {
     MarkdownComposeSampleTheme(darkTheme = true) {
-        Surface { // Wrap in Surface for background color
+        Surface {
             MainScreen()
         }
     }

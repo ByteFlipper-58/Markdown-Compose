@@ -41,6 +41,27 @@ data class CodeNode(
     val isBlock: Boolean = false
 ) : MarkdownNode
 
+// --- Footnote Nodes ---
+
+/** Represents an inline footnote reference like [^1] or [^tag]. */
+data class FootnoteReferenceNode(
+    val identifier: String, // The raw identifier (e.g., "1", "tag")
+    var displayIndex: Int? = null // The sequential number [1], [2], etc., determined during rendering
+) : MarkdownNode
+
+/** Represents a footnote definition block like [^1]: Some text. */
+data class FootnoteDefinitionNode(
+    val identifier: String,
+    val content: List<MarkdownNode> // The parsed content of the footnote
+) : MarkdownNode // Technically a block-level element definition
+
+/** A special node added by the parser to hold all found definitions. Rendered at the end. */
+data class FootnoteDefinitionsBlockNode(
+    val definitions: Map<String, FootnoteDefinitionNode> // Map: identifier -> DefinitionNode
+) : MarkdownNode
+
+// --- Table Nodes ---
+
 enum class ColumnAlignment {
     LEFT,
     RIGHT,

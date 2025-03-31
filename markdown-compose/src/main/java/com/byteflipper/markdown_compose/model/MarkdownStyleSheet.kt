@@ -17,6 +17,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift // Для суперскрипта
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -157,8 +158,16 @@ data class MarkdownStyleSheet(
     val horizontalRuleStyle: HorizontalRuleStyle,
     val linkStyle: LinkStyle,
     val imageStyle: ImageStyle,
+    // --- Новые стили для сносок ---
+    /** Style for the inline footnote reference (e.g., `[1]`). Often uses superscript. */
+    val footnoteReferenceStyle: SpanStyle,
+    /** Style for the entire footnote definition block at the bottom. */
+    val footnoteDefinitionStyle: TextStyle,
+    /** Padding above the footnote definitions block. */
+    val footnoteBlockPadding: Dp = 16.dp,
+    // --- Конец новых стилей ---
     val blockSpacing: Dp = 16.dp,
-    val lineBreakSpacing: Dp = 16.dp
+    val lineBreakSpacing: Dp = 8.dp // было 16.dp, 8 выглядит лучше для пустых строк
 )
 
 /**
@@ -235,6 +244,14 @@ fun defaultMarkdownStyleSheet(
         color = checkedTaskItemTextColor
     )
 
+    // --- Стиль сноски по умолчанию ---
+    val defaultFootnoteReferenceStyle = SpanStyle(
+        color = MaterialTheme.colorScheme.primary, // Или baseTextStyle.color
+        fontSize = baseTextStyle.fontSize * 0.8, // Меньше
+        baselineShift = BaselineShift.Superscript // Поднять
+    )
+    val defaultFootnoteDefinitionStyle = MaterialTheme.typography.bodySmall // Или baseTextStyle, но меньше
+
     return remember(
         textStyle, boldTextStyle, italicTextStyle, strikethroughTextStyle,
         inlineCodeBackgroundColor, inlineCodeTextColor, linkColor,
@@ -244,6 +261,8 @@ fun defaultMarkdownStyleSheet(
         checkedCheckboxIndicatorColor, checkedCheckboxContainerColor,
         uncheckedCheckboxBorderColor, disabledCheckboxIndicatorColor, disabledCheckboxContainerColor,
         imageStyle,
+        defaultFootnoteReferenceStyle, // Новый ключ
+        defaultFootnoteDefinitionStyle, // Новый ключ
         baseTextStyle, onSurfaceVariantColor, codeTextStyle, defaultLabelSmallStyle,
         languageLabelTextStyleResolved, infoBarTextStyleResolved,
         resolvedInlineCodeStyle, defaultCheckedTaskItemTextStyle
@@ -316,6 +335,13 @@ fun defaultMarkdownStyleSheet(
                 color = dividerColor,
                 thickness = 1.dp
             ),
+            // --- Присваивание стилей сносок ---
+            footnoteReferenceStyle = defaultFootnoteReferenceStyle,
+            footnoteDefinitionStyle = defaultFootnoteDefinitionStyle.copy(
+                color = baseTextStyle.color.copy(alpha = 0.8f) // Немного приглушить цвет определения
+            ),
+            footnoteBlockPadding = 16.dp,
+            // --- Конец присваивания ---
             blockSpacing = 16.dp,
             lineBreakSpacing = 8.dp
         )

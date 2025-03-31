@@ -7,6 +7,12 @@ import com.byteflipper.markdown_compose.model.*
 
 private const val TAG = "BlockParser"
 
+/** Contains the results of parsing blocks, including the main nodes and footnote definitions. */
+data class BlockParseResult(
+    val nodes: List<MarkdownNode>,
+    val definitions: Map<String, FootnoteDefinitionNode>
+)
+
 /**
  * Parses Markdown text into block-level nodes, coordinating with specialized parsers.
  */
@@ -23,22 +29,24 @@ object BlockParser {
     // Simple patterns managed here
     private val horizontalRuleRegex = Regex("""^\s*([-*_])\s*\1\s*\1+\s*$""")
     private val headerPrefixRegex = Regex("""^#{1,6}\s+.*""") // Basic check for # prefix + space
+    private val footnoteDefinitionRegex = Regex("""^\s*\[\^([^\]\s]+)]:\s?(.*)""") // [^id]: text (single line)
 
     /**
-     * Parses the input Markdown string into a list of block-level MarkdownNode objects.
+     * Parses the input Markdown string into block-level nodes and footnote definitions.
      * @param input The Markdown text to parse.
-     * @return A list of parsed MarkdownNode elements.
+     * @return A BlockParseResult containing the list of main nodes and a map of footnote definitions.
      */
     @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-    fun parseBlocks(input: String): List<MarkdownNode> {
+    fun parseBlocks(input: String): BlockParseResult { // Возвращаем BlockParseResult
         Log.d(TAG, "--- Starting parseBlocks ---")
         val nodes = mutableListOf<MarkdownNode>()
+        val definitions = mutableMapOf<String, FootnoteDefinitionNode>() // Карта для сбора определений
         val lines = input.lines()
 
         var i = 0
         while (i < lines.size) {
             val line = lines[i]
-            var consumedLines = 1 // Default consumption for single-line blocks
+            var consumedLines = 1
             Log.d(TAG, "Processing line $i: \"$line\"")
 
             if (line.isBlank()) {
@@ -82,7 +90,21 @@ object BlockParser {
                 }
             }
 
-            // 3. List Item Check (Single line per item, parsed by ListParser)
+            // 3. Footnote Definition Check (НОВОЕ - перед списком/цитатами)
+            // TODO: Add support for multi-line footnote definitions.
+            val footnoteDefNode = parseFootnoteDefinition(line)
+            if (footnoteDefNode != null) {
+                if (!definitions.containsKey(footnoteDefNode.identifier)) { // First definition wins
+                    definitions[footnoteDefNode.identifier] = footnoteDefNode
+                    Log.d(TAG, "Parsed FootnoteDefinition for [^${footnoteDefNode.identifier}] at line $i")
+                } else {
+                    Log.w(TAG, "Duplicate footnote definition ignored for [^${footnoteDefNode.identifier}] at line $i")
+                }
+                i++ // Consume one line for definition
+                continue
+            }
+
+            // 4. List Item Check (Single line per item, parsed by ListParser)
             if (listParser.isStartOfListItem(line)) {
                 val listItemNode = listParser.parseListItem(line)
                 if (listItemNode != null) {
@@ -96,7 +118,7 @@ object BlockParser {
                 }
             }
 
-            // 4. Header Check (Single line)
+            // 5. Header Check (Single line)
             val headerNode = parseHeader(line)
             if (headerNode != null) {
                 nodes.add(headerNode)
@@ -105,7 +127,7 @@ object BlockParser {
                 continue
             }
 
-            // 5. Block Quote Check (Single line) - More complex quotes might need refinement later
+            // 6. Block Quote Check (Single line) - More complex quotes might need refinement later
             val blockQuoteNode = parseBlockQuote(line)
             if (blockQuoteNode != null) {
                 nodes.add(blockQuoteNode)
@@ -114,7 +136,7 @@ object BlockParser {
                 continue
             }
 
-            // 6. Horizontal Rule Check (Single line)
+            // 7. Horizontal Rule Check (Single line)
             val horizontalRuleNode = parseHorizontalRule(line)
             if (horizontalRuleNode != null) {
                 if (nodes.lastOrNull() is LineBreakNode) {
@@ -127,10 +149,11 @@ object BlockParser {
                 continue
             }
 
-            // 7. Default: Treat as Paragraph (use InlineParser)
+            // 8. Default: Treat as Paragraph (use InlineParser)
             Log.d(TAG, "Treating line $i as paragraph/inline content.")
             val inlineNodes = InlineParser.parseInline(line)
             if (inlineNodes.isNotEmpty()) {
+                // Combine consecutive inline nodes into larger TextNode blocks if possible? Not currently done.
                 nodes.addAll(inlineNodes)
             } else if (line.isNotEmpty()) {
                 // Handle cases where InlineParser might return empty for non-empty input (e.g., only whitespace?)
@@ -146,8 +169,8 @@ object BlockParser {
             nodes.removeLast()
         }
 
-        Log.d(TAG, "--- Finished parseBlocks. Total nodes created: ${nodes.size} ---")
-        return nodes
+        Log.d(TAG, "--- Finished parseBlocks. Nodes: ${nodes.size}, Definitions: ${definitions.size} ---")
+        return BlockParseResult(nodes.toList(), definitions.toMap()) // Возвращаем результат
     }
 
     // --- Private Helper Functions for Simple Blocks ---
@@ -182,5 +205,17 @@ object BlockParser {
     /** Parses horizontal rules. Returns HorizontalRuleNode or null. */
     private fun parseHorizontalRule(line: String): HorizontalRuleNode? {
         return if (horizontalRuleRegex.matches(line)) HorizontalRuleNode else null
+    }
+
+    /** Parses a single-line footnote definition. Returns FootnoteDefinitionNode or null. */
+    private fun parseFootnoteDefinition(line: String): FootnoteDefinitionNode? {
+        footnoteDefinitionRegex.matchEntire(line)?.let { match ->
+            val identifier = match.groupValues[1]
+            val contentString = match.groupValues[2] // Content is the rest of the line
+            // Parse the content string using the inline parser
+            val contentNodes = InlineParser.parseInline(contentString)
+            return FootnoteDefinitionNode(identifier, contentNodes)
+        }
+        return null
     }
 }
