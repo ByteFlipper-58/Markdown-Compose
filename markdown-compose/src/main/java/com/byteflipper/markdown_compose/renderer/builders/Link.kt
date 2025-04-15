@@ -8,7 +8,7 @@ import com.byteflipper.markdown_compose.model.LinkNode
 import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
 
 object Link {
-    internal const val URL_TAG = "URL"
+    const val URL_TAG = "URL"
 
     fun render(builder: AnnotatedString.Builder, node: LinkNode, styleSheet: MarkdownStyleSheet) {
         val linkStyleModel = styleSheet.linkStyle

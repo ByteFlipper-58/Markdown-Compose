@@ -13,69 +13,73 @@
 - Списки:
   - Маркированные (`-`, `*`, `+`)
   - Нумерованные (`1.`, `2.`, ...)
-  - ✅ **Списки задач** (`- [ ] текст`, `- [x] текст`) с настраиваемым стилем.
+  - ✅ **Списки задач** (`- [ ] текст`, `- [x] текст`) с **интерактивными чекбоксами**, поддержкой ссылок/сносок и настраиваемым стилем.
+  - ✅ **Списки определений** (термин на одной строке, `:` + определение на следующей).
   - Вложенные списки
 - Ссылки (`[текст](URL)`)
 - **Жирный текст** (`**текст**`)
 - *Курсив* (`*текст*`)
 - ~~Зачеркнутый текст~~ (`~~текст~~`)
 - `Inline code` (`` `код` ``)
-- Блоки кода с подсветкой (в планах), кнопкой копирования и настройками стилей
+- Блоки кода с отображением языка, кнопкой копирования, счетчиками строк/символов и настройками стилей (подсветка синтаксиса в планах).
 - > Блочные цитаты (`> текст`)
-- 📊 Таблицы с различными стилями и настраиваемыми границами (поддержка Canvas)
+- 📊 Таблицы с различными стилями и настраиваемыми границами.
 - Разделители (`---`, `***`, `___`)
-- ✅ **Изображения** (`![alt текст](URL)`) с поддержкой загрузки (Coil) и кастомизации.
+- ✅ **Изображения** (`![alt текст](URL)`) с возможностью кастомизации рендеринга (например, для интеграции Coil/Glide).
 - ✅ **Ссылки-изображения** (`[![alt текст](img URL)](link URL)`).
 - ✅ **Сноски (Footnotes)** (`[^id]` и `[^id]: Text`) с настраиваемым стилем и **прокруткой к определению** при клике.
 - Настраиваемое расстояние между блоками и строками.
-- 📌 **Поддержка HTML внутри Markdown** (базовая, в планах)
-- 🎨 **Темы оформления** (светлая, тёмная, кастомные стили)
-- ⚡ **Оптимизированный рендеринг** (базовый)
+- ✅ **Расширяемый рендеринг:** Возможность передать собственные Composable-функции для отображения конкретных элементов Markdown (заголовков, изображений, блоков кода, списков определений и т.д.).
+- ✅ **Совместимость:** Не требует высокого уровня API Android.
+- 🎨 **Темы оформления** (светлая, тёмная, кастомные стили через `MarkdownStyleSheet`).
+- ⚡ **Оптимизированный рендеринг** (базовый).
+
+*В планах:*
+- Подсветка синтаксиса для блоков кода.
+- Базовая поддержка HTML тегов.
+- Улучшенная поддержка GFM (GitHub Flavored Markdown).
 
 ## 🚀 Установка
 
-На данный момент библиотека находится в разработке. Добавьте зависимость в `build.gradle.kts`:
+Добавьте зависимость в `build.gradle.kts` вашего модуля:
 
 ```kotlin
 dependencies {
+    // Убедитесь, что путь к проекту ':markdown-compose' корректен
     implementation(project(":markdown-compose"))
 }
 ```
 
-## 📖 Пример использования (с обработкой сносок)
+## 📖 Пример использования
 
 ```kotlin
+// ... внутри вашего Composable
+
 // Состояния для скролла и позиций сносок
 val scrollState = rememberScrollState()
 val footnotePositions = remember { mutableStateMapOf<String, Float>() }
 val coroutineScope = rememberCoroutineScope()
 
+// Пример состояния для отслеживания изменений в Task List
+var markdownContent by remember { mutableStateOf("""
+    # Пример Markdown
+    Это **жирный** текст и *курсив*.
+
+    - [x] Выполненная задача со [ссылкой](https://example.com)
+    - [ ] Невыполненная задача со сноской[^task]
+    - [ ] Еще одна задача
+
+    Вот еще одна сноска[^1].
+
+    [^1]: Описание первой сноски.
+    [^task]: Сноска для задачи.
+""".trimIndent()) }
+
 // Оберните MarkdownText в скроллируемый контейнер
 Column(modifier = Modifier.verticalScroll(scrollState)) {
     MarkdownText(
-        markdown = """
-            # Привет, Мир!
-            Это **простой** пример использования `MarkdownText`.
-
-            Вот сноска[^1].
-
-            - Пункт 1
-            - Пункт 2 со сноской[^note]
-                - Вложенный пункт
-
-            ```kotlin
-            fun greet(name: String) {
-                println("Hello, $name!")
-            }
-            ```
-            Много текста, чтобы было куда скроллить...
-            ...
-            Еще текст...
-            ...
-
-            [^1]: Это первая сноска.
-            [^note]: Это вторая сноска с `кодом`.
-        """.trimIndent(),
+        markdown = markdownContent, // Используем состояние
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
         footnotePositions = footnotePositions, // Передаем карту для записи позиций
         onFootnoteReferenceClick = { identifier ->
             // Ищем позицию по ID сноски
@@ -86,26 +90,79 @@ Column(modifier = Modifier.verticalScroll(scrollState)) {
                 }
             }
         },
-        modifier = Modifier.fillMaxWidth().padding(16.dp)
+        onTaskCheckedChange = { taskNode: TaskListItemNode, isChecked: Boolean ->
+            // Обработка изменения состояния чекбокса
+            // ВАЖНО: Эта лямбда только уведомляет. Вам нужно обновить исходный markdownContent.
+            // Это ПРОСТОЙ пример обновления строки. В реальном приложении может потребоваться
+            // более сложная логика для поиска и замены строки задачи.
+            val taskText = taskNode.content.joinToString("") { node ->
+                 // Упрощенное получение текста узла (может быть неточным для сложных inline)
+                 when(node) {
+                     is TextNode -> node.text
+                     is BoldTextNode -> node.text
+                     is ItalicTextNode -> node.text
+                     is StrikethroughTextNode -> node.text
+                     is CodeNode -> "`" + node.code + "`"
+                     is LinkNode -> "[${node.text}](${node.url})"
+                     is FootnoteReferenceNode -> "[^${node.identifier}]"
+                     else -> ""
+                 }
+            }
+            val oldTaskLine = "- [${if (isChecked) " " else "x"}] $taskText"
+            val newTaskLine = "- [${if (isChecked) "x" else " "}] $taskText"
+
+            if (markdownContent.contains(oldTaskLine)) {
+                 markdownContent = markdownContent.replace(oldTaskLine, newTaskLine)
+                 println("Task state changed: $newTaskLine")
+            } else {
+                 println("Warning: Could not find task line to update: $oldTaskLine")
+            }
+        }
+        // Можно передать кастомные renderers и styleSheet здесь
+        // renderers = customRenderers,
+        // styleSheet = customStyleSheet
     )
 }
 ```
 
-## 🎨 Кастомизация стилей
+### Пример списка определений
+
+```markdown
+Термин 1
+: Определение 1
+
+Термин 2 с `кодом`
+: Определение 2а
+: Определение 2б
+```
+
+## 🎨 Кастомизация стилей (`MarkdownStyleSheet`)
+
+Вы можете легко настроить внешний вид элементов, передав собственный `MarkdownStyleSheet`. Используйте `defaultMarkdownStyleSheet()` как основу и модифицируйте нужные стили с помощью `copy()`:
 
 ```kotlin
+// ...
+
 val customStyleSheet = defaultMarkdownStyleSheet().copy(
-    textStyle = TextStyle(fontSize = 15.sp),
+    textStyle = TextStyle(fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground),
     headerStyle = defaultMarkdownStyleSheet().headerStyle.copy(
-        h1 = TextStyle(color = MaterialTheme.colorScheme.primary)
+        h1 = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary),
+        bottomPadding = 12.dp
     ),
-    tableStyle = defaultMarkdownStyleSheet().tableStyle.copy(
-        borderColor = Color.Gray,
-        borderThickness = 2.dp
+    codeBlockStyle = defaultMarkdownStyleSheet().codeBlockStyle.copy(
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+        codeBackground = Color.DarkGray.copy(alpha = 0.1f)
     ),
-    // --- Стили сносок ---
+    inlineCodeStyle = SpanStyle(
+        fontFamily = FontFamily.Monospace,
+        background = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        fontSize = 13.sp
+    ),
+    taskListItemStyle = defaultMarkdownStyleSheet().taskListItemStyle.copy(
+        checkedTextStyle = SpanStyle(textDecoration = TextDecoration.LineThrough, color = Color.Gray)
+    ),
     footnoteReferenceStyle = SpanStyle( // Стиль для ссылки [1]
-        color = MaterialTheme.colorScheme.tertiary,
+        color = MaterialTheme.colorScheme.secondary,
         baselineShift = BaselineShift.Superscript, // Делаем верхним индексом
         fontSize = 12.sp // Меньше размер
     ),
@@ -114,13 +171,47 @@ val customStyleSheet = defaultMarkdownStyleSheet().copy(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 14.sp
     ),
-    footnoteBlockPadding = 24.dp // Отступ перед блоком определений
+    definitionListStyle = defaultMarkdownStyleSheet().definitionListStyle.copy(
+        termTextStyle = TextStyle(fontWeight = FontWeight.Bold),
+        detailsIndent = 20.dp,
+        itemSpacing = 10.dp
+    )
 )
+
+// Затем передайте его в MarkdownText:
+// MarkdownText(..., styleSheet = customStyleSheet)
 ```
 
-## 🔧 Разработка
+## 🔧 Расширяемый рендеринг (`MarkdownRenderers`)
 
-Проект находится в активной разработке. Планируется улучшение поддержки таблиц, добавление синтаксической подсветки кода, поддержка HTML и расширений Markdown (GFM).
+Для полной кастомизации отображения конкретных элементов (например, для использования Coil для загрузки изображений или добавления своей подсветки кода), вы можете передать собственный объект `MarkdownRenderers`.
+
+```kotlin
+// ...
+
+val customRenderers = defaultMarkdownRenderers().copy(
+    // Переопределяем рендеринг изображений для использования Coil
+    renderImage = { node: ImageNode, styleSheet: MarkdownStyleSheet, modifier: Modifier ->
+        AsyncImage(
+            model = node.url,
+            contentDescription = node.altText,
+            modifier = modifier
+                .fillMaxWidth() // Пример модификатора
+                .then(styleSheet.imageStyle.modifier), // Применяем стили из StyleSheet
+            contentScale = styleSheet.imageStyle.contentScale,
+            placeholder = styleSheet.imageStyle.placeholder,
+            error = styleSheet.imageStyle.error
+        )
+    },
+    // Можно переопределить и другие рендереры, например, renderCodeBlock, renderDefinitionList
+    // renderCodeBlock = { node, styleSheet, modifier -> /* Ваша реализация */ },
+    // renderDefinitionList = { node, styleSheet, modifier, footnoteMap, linkHandler, footnoteClickHandler -> /* Ваша реализация */ }
+)
+
+// Затем передайте его в MarkdownText:
+// MarkdownText(..., renderers = customRenderers)
+
+```
 
 ## 🤝 Вклад в проект
 

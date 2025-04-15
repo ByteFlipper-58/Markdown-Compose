@@ -21,7 +21,7 @@ import androidx.compose.ui.text.style.BaselineShift // Для суперскри
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.*
 
 /** Styles for H1-H6 headers and spacing after them. */
 @Immutable
@@ -136,6 +136,15 @@ data class ImageStyle(
     val error: Painter? = null
 )
 
+/** Styles for definition lists (term/details). */
+@Immutable
+data class DefinitionListStyle(
+    val termTextStyle: TextStyle,
+    val detailsTextStyle: TextStyle,
+    val detailsIndent: Dp = 16.dp, // Indentation for the details part
+    val itemSpacing: Dp = 8.dp // Spacing between definition items
+)
+
 /**
  * Defines the visual styling for rendering Markdown content using Jetpack Compose.
  * Provides customization options for various Markdown elements like headers, lists, code blocks, etc.
@@ -166,6 +175,7 @@ data class MarkdownStyleSheet(
     /** Padding above the footnote definitions block. */
     val footnoteBlockPadding: Dp = 16.dp,
     // --- Конец новых стилей ---
+    val definitionListStyle: DefinitionListStyle, // Add style for definition lists
     val blockSpacing: Dp = 16.dp,
     val lineBreakSpacing: Dp = 8.dp // было 16.dp, 8 выглядит лучше для пустых строк
 )
@@ -221,7 +231,11 @@ fun defaultMarkdownStyleSheet(
     uncheckedCheckboxBorderColor: Color = MaterialTheme.colorScheme.outline,
     disabledCheckboxIndicatorColor: Color = checkedTaskItemTextColor,
     disabledCheckboxContainerColor: Color = checkedTaskItemTextColor,
-    imageStyle: ImageStyle = ImageStyle()
+    imageStyle: ImageStyle = ImageStyle(),
+    // Add default values for definition list styles
+    definitionTermFontWeight: FontWeight = FontWeight.Bold,
+    definitionDetailsIndent: Dp = 16.dp,
+    definitionItemSpacing: Dp = 8.dp
 ): MarkdownStyleSheet {
     val resolvedTextColor = textStyle.color.takeOrElse { MaterialTheme.colorScheme.onSurface }
     val baseTextStyle = textStyle.copy(color = resolvedTextColor)
@@ -252,6 +266,10 @@ fun defaultMarkdownStyleSheet(
     )
     val defaultFootnoteDefinitionStyle = MaterialTheme.typography.bodySmall // Или baseTextStyle, но меньше
 
+    // Default styles for definition list
+    val defaultDefinitionTermStyle = baseTextStyle.copy(fontWeight = definitionTermFontWeight)
+    val defaultDefinitionDetailsStyle = baseTextStyle // Inherit base style for details
+
     return remember(
         textStyle, boldTextStyle, italicTextStyle, strikethroughTextStyle,
         inlineCodeBackgroundColor, inlineCodeTextColor, linkColor,
@@ -261,8 +279,10 @@ fun defaultMarkdownStyleSheet(
         checkedCheckboxIndicatorColor, checkedCheckboxContainerColor,
         uncheckedCheckboxBorderColor, disabledCheckboxIndicatorColor, disabledCheckboxContainerColor,
         imageStyle,
-        defaultFootnoteReferenceStyle, // Новый ключ
-        defaultFootnoteDefinitionStyle, // Новый ключ
+        defaultFootnoteReferenceStyle,
+        defaultFootnoteDefinitionStyle,
+        // Add definition list styles to remember keys
+        defaultDefinitionTermStyle, defaultDefinitionDetailsStyle, definitionDetailsIndent, definitionItemSpacing,
         baseTextStyle, onSurfaceVariantColor, codeTextStyle, defaultLabelSmallStyle,
         languageLabelTextStyleResolved, infoBarTextStyleResolved,
         resolvedInlineCodeStyle, defaultCheckedTaskItemTextStyle
@@ -341,7 +361,14 @@ fun defaultMarkdownStyleSheet(
                 color = baseTextStyle.color.copy(alpha = 0.8f) // Немного приглушить цвет определения
             ),
             footnoteBlockPadding = 16.dp,
-            // --- Конец присваивания ---
+            // --- Assign definition list style ---
+            definitionListStyle = DefinitionListStyle(
+                termTextStyle = defaultDefinitionTermStyle,
+                detailsTextStyle = defaultDefinitionDetailsStyle,
+                detailsIndent = definitionDetailsIndent,
+                itemSpacing = definitionItemSpacing
+            ),
+            // --- End assignment ---
             blockSpacing = 16.dp,
             lineBreakSpacing = 8.dp
         )

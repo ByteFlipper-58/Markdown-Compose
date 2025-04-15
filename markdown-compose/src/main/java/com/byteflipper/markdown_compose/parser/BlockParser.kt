@@ -36,7 +36,7 @@ object BlockParser {
      * @param input The Markdown text to parse.
      * @return A BlockParseResult containing the list of main nodes and a map of footnote definitions.
      */
-    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    // @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM) // Removed - Not needed by underlying parsers
     fun parseBlocks(input: String): BlockParseResult { // Возвращаем BlockParseResult
         Log.d(TAG, "--- Starting parseBlocks ---")
         val nodes = mutableListOf<MarkdownNode>()
@@ -149,7 +149,17 @@ object BlockParser {
                 continue
             }
 
-            // 8. Default: Treat as Paragraph (use InlineParser)
+            // 8. Definition List Check (NEW - before paragraph fallback)
+            val definitionListResult = parseDefinitionList(lines, i)
+            if (definitionListResult != null) {
+                nodes.add(definitionListResult.first)
+                consumedLines = definitionListResult.second
+                Log.d(TAG, "Parsed DefinitionListNode ending at line ${i + consumedLines - 1}")
+                i += consumedLines
+                continue
+            }
+
+            // 9. Default: Treat as Paragraph (use InlineParser)
             Log.d(TAG, "Treating line $i as paragraph/inline content.")
             val inlineNodes = InlineParser.parseInline(line)
             if (inlineNodes.isNotEmpty()) {
@@ -172,6 +182,87 @@ object BlockParser {
         Log.d(TAG, "--- Finished parseBlocks. Nodes: ${nodes.size}, Definitions: ${definitions.size} ---")
         return BlockParseResult(nodes.toList(), definitions.toMap()) // Возвращаем результат
     }
+
+    /**
+     * Attempts to parse a definition list starting at the given index.
+     * Syntax:
+     * Term 1
+     * : Definition 1a
+     * : Definition 1b
+     * Term 2
+     * : Definition 2
+     *
+     * @param lines List of all lines.
+     * @param startIndex The index to start checking from.
+     * @return A Pair containing the DefinitionListNode and the number of lines consumed, or null if not a definition list.
+     */
+    private fun parseDefinitionList(lines: List<String>, startIndex: Int): Pair<DefinitionListNode, Int>? {
+        Log.v(TAG, "Checking for Definition List at line $startIndex")
+        val items = mutableListOf<DefinitionItemNode>()
+        var currentIndex = startIndex
+
+        while (currentIndex < lines.size) {
+            val termLine = lines[currentIndex]
+
+            // --- Check for Term Line ---
+            // Must be non-blank and not start with common block markers (could be refined)
+            if (termLine.isBlank() || termLine.startsWith(listOf(">", "#", "-", "*", "+", "1.", "```", "|", "[^", "    ", "\t"))) {
+                Log.v(TAG, "Line $currentIndex ('$termLine') is not a valid term start. Ending definition list check.")
+                break // Not a term or end of list
+            }
+
+            // --- Check for Details Line(s) ---
+            var detailsIndex = currentIndex + 1
+            if (detailsIndex >= lines.size || !lines[detailsIndex].trimStart().startsWith(':')) {
+                Log.v(TAG, "Line ${currentIndex + 1} does not start with ':'. Not a definition list or list ended.")
+                break // Next line must start with ':'
+            }
+
+            // --- Parse Term ---
+            val termContent = InlineParser.parseInline(termLine.trim())
+            val currentTerm = DefinitionTermNode(termContent)
+            Log.d(TAG, "Potential Term found at line $currentIndex: '$termLine'")
+
+            // --- Parse Details ---
+            val currentDetails = mutableListOf<DefinitionDetailsNode>()
+            while (detailsIndex < lines.size) {
+                val detailsLine = lines[detailsIndex]
+                val trimmedDetailsLine = detailsLine.trimStart()
+                if (trimmedDetailsLine.startsWith(':')) {
+                    // Remove leading ':' and optional space, then parse inline content
+                    val detailsContentString = trimmedDetailsLine.substring(1).trimStart()
+                    val detailsContent = InlineParser.parseInline(detailsContentString)
+                    currentDetails.add(DefinitionDetailsNode(detailsContent))
+                    Log.d(TAG, "Added Details line $detailsIndex: '$detailsContentString'")
+                    detailsIndex++
+                } else {
+                    // Line doesn't start with ':', so details for this term end
+                    break
+                }
+            }
+
+            // --- Add Item and Update Index ---
+            if (currentDetails.isNotEmpty()) {
+                items.add(DefinitionItemNode(currentTerm, currentDetails.toList()))
+                Log.d(TAG,"Added DefinitionItemNode. Term: '${termLine}', Details lines: ${currentDetails.size}")
+                currentIndex = detailsIndex // Move main index past consumed term and details
+            } else {
+                // Term found but no valid details lines followed. This isn't a definition list item.
+                Log.v(TAG, "Term found at line ${currentIndex}, but no valid details lines followed. Stopping list parse.")
+                break
+            }
+        } // End while loop
+
+        return if (items.isNotEmpty()) {
+            val consumed = currentIndex - startIndex
+            Log.d(TAG, "Successfully parsed DefinitionListNode with ${items.size} items, consuming $consumed lines.")
+            Pair(DefinitionListNode(items), consumed)
+        } else {
+            Log.v(TAG, "No definition list items found starting at line $startIndex.")
+            null
+        }
+    }
+
 
     // --- Private Helper Functions for Simple Blocks ---
 
@@ -217,5 +308,10 @@ object BlockParser {
             return FootnoteDefinitionNode(identifier, contentNodes)
         }
         return null
+    }
+
+    // Helper to check if a line starts with common block markers
+    private fun String.startsWith(prefixes: List<String>): Boolean {
+        return prefixes.any { this.trimStart().startsWith(it) }
     }
 }

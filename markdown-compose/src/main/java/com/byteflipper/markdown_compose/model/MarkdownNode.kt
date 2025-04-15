@@ -83,3 +83,20 @@ data class TableNode(
     val columnAlignments: List<ColumnAlignment>,
     val columnWidths: List<Float> = emptyList()
 ) : MarkdownNode
+
+// --- Definition List Nodes ---
+
+/** Represents a term in a definition list. */
+data class DefinitionTermNode(val content: List<MarkdownNode>) : MarkdownNode
+
+/** Represents the details/description part of a definition item. */
+data class DefinitionDetailsNode(val content: List<MarkdownNode>) : MarkdownNode
+
+/** Represents a single item (term + details) in a definition list. */
+data class DefinitionItemNode(
+    val term: DefinitionTermNode,
+    val details: List<DefinitionDetailsNode> // Can have multiple detail lines
+) : MarkdownNode
+
+/** Represents the entire definition list block. */
+data class DefinitionListNode(val items: List<DefinitionItemNode>) : MarkdownNode

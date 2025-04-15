@@ -3,36 +3,19 @@ package com.byteflipper.markdown_compose
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import androidx.annotation.RequiresApi
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onPlaced // Import onPlaced
-import androidx.compose.ui.layout.positionInParent // Import positionInParent
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.byteflipper.markdown_compose.model.*
 import com.byteflipper.markdown_compose.parser.MarkdownParser
-import com.byteflipper.markdown_compose.renderer.* // Import FOOTNOTE_REF_TAG
-import com.byteflipper.markdown_compose.renderer.builders.*
-import com.byteflipper.markdown_compose.renderer.canvas.HorizontalRule
-import android.util.Log
-import androidx.compose.foundation.text.ClickableText
-import androidx.compose.ui.platform.LocalContext
 
 private const val TAG = "MarkdownText"
 
-/** Data class to hold pre-processed footnote information. */
-private data class FootnoteInfo(
-    val orderedIdentifiers: List<String>, // Identifiers in the order they appear
-    val identifierToIndexMap: Map<String, Int>, // Map: identifier -> display index (1, 2, ...)
-    val definitions: Map<String, FootnoteDefinitionNode> // Map: identifier -> definition node
-)
+// FootnoteInfo data class moved to model/FootnoteInfo.kt
 
 /**
  * Composable function to render Markdown content as Jetpack Compose UI components.
@@ -49,8 +32,11 @@ private data class FootnoteInfo(
  * @param onFootnoteReferenceClick Custom handler for footnote reference clicks ([^id]). Parameter is the identifier.
  *                                 The caller should use this identifier to look up the position in `footnotePositions`
  *                                 and trigger scrolling. Default implementation logs the click.
+ * @param onTaskCheckedChange Callback invoked when a task list item's checkbox is clicked.
+ *                            Provides the specific [TaskListItemNode] and the intended new checked state.
+ *                            The caller is responsible for updating the source data and triggering recomposition.
+ * @param renderers A set of composable functions to render different Markdown elements. Allows customization.
  */
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM) // From Parser
 @Composable
 fun MarkdownText(
     markdown: String,
@@ -58,11 +44,14 @@ fun MarkdownText(
     styleSheet: MarkdownStyleSheet = defaultMarkdownStyleSheet(),
     footnotePositions: MutableMap<String, Float>, // Map for updating positions
     onLinkClick: ((url: String) -> Unit)? = null,
-    onFootnoteReferenceClick: ((identifier: String) -> Unit)? = { id -> Log.i(TAG, "Footnote ref clicked: [^$id]") } // Callback only passes ID
+    onFootnoteReferenceClick: ((identifier: String) -> Unit)? = { id -> Log.i(TAG, "Footnote ref clicked: [^$id]") }, // Callback only passes ID
+    onTaskCheckedChange: ((node: TaskListItemNode, isChecked: Boolean) -> Unit)? = { node, checked -> Log.i(TAG, "Task item '${node.content.firstOrNull()?.toString()?.take(20)}...' checked: $checked (Default handler)") }, // Added callback
+    renderers: MarkdownRenderers = defaultMarkdownRenderers() // Add renderers parameter
 ) {
     // --- Parsing and footnote pre-processing ---
     val parsedNodes = remember(markdown) { MarkdownParser.parse(markdown) }
     Log.d(TAG, "Parsed ${parsedNodes.size} top-level nodes.")
+    // Use the moved extractFootnoteInfo function (or ideally, pass FootnoteInfo as a parameter)
     val footnoteInfo = remember(parsedNodes) { extractFootnoteInfo(parsedNodes) }
     val bodyNodes = remember(parsedNodes) {
         if (parsedNodes.lastOrNull() is FootnoteDefinitionsBlockNode) {
@@ -111,35 +100,18 @@ fun MarkdownText(
                     Log.v(TAG, "Added block spacing before flushed text group.")
                 }
 
-                val annotatedString = MarkdownRenderer.render(
-                    textNodeGrouper,
+                // Use the paragraph renderer
+                // Ensure all arguments are positional and match the definition:
+                // (nodes: List<MarkdownNode>, styleSheet: MarkdownStyleSheet, modifier: Modifier, footnoteReferenceMap: Map<String, Int>?, linkHandler: (String) -> Unit, onFootnoteReferenceClick: ((String) -> Unit)?) -> @Composable () -> Unit
+                renderers.renderParagraph( // Call the function to get the composable lambda
+                    textNodeGrouper.toList(),
                     styleSheet,
-                    footnoteInfo?.identifierToIndexMap // Pass footnote map
-                )
+                    Modifier.fillMaxWidth(),
+                    footnoteInfo?.identifierToIndexMap,
+                    currentLinkHandler,
+                    onFootnoteReferenceClick
+                )() // Invoke the returned composable lambda
 
-                ClickableText(
-                    text = annotatedString,
-                    style = baseTextStyle,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { offset ->
-                        Log.d(TAG, "Click detected at offset: $offset in flushed text group")
-                        // Check for URL link first
-                        annotatedString
-                            .getStringAnnotations(tag = Link.URL_TAG, start = offset, end = offset)
-                            .firstOrNull()?.let { annotation ->
-                                Log.i(TAG, "Link clicked in paragraph/inline: ${annotation.item}")
-                                currentLinkHandler(annotation.item)
-                                return@ClickableText // Handled
-                            }
-                        // Check for Footnote reference link
-                        annotatedString
-                            .getStringAnnotations(tag = FOOTNOTE_REF_TAG, start = offset, end = offset)
-                            .firstOrNull()?.let { annotation ->
-                                Log.i(TAG, "Footnote ref [^${annotation.item}] clicked in paragraph/inline")
-                                onFootnoteReferenceClick?.invoke(annotation.item) // Call callback with identifier
-                            }
-                    }
-                )
                 lastRenderedNode = textNodeGrouper.last()
                 textNodeGrouper.clear()
             } else {
@@ -185,173 +157,94 @@ fun MarkdownText(
                 Log.v(TAG, "Added Spacer height ${spacingDp.value} dp before node $index")
             }
 
-            // --- Render the Current Node ---
+            // --- Render the Current Node using Renderers ---
             when (node) {
-                is TableNode -> {
-                    Table.RenderTable(
-                        tableNode = node,
-                        styleSheet = styleSheet,
-                        modifier = Modifier.fillMaxWidth(),
-                        footnoteReferenceMap = footnoteInfo?.identifierToIndexMap, // Pass map
-                        linkHandler = currentLinkHandler,
-                        onFootnoteReferenceClick = onFootnoteReferenceClick // Pass callback
-                    )
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered TableNode $index")
-                }
-                is HorizontalRuleNode -> {
-                    HorizontalRule.Render(
-                        color = styleSheet.horizontalRuleStyle.color,
-                        thickness = styleSheet.horizontalRuleStyle.thickness
-                    )
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered HorizontalRuleNode $index")
-                }
-                is BlockQuoteNode -> {
-                    BlockQuoteComposable(
-                        node = node,
-                        styleSheet = styleSheet,
-                        modifier = Modifier.fillMaxWidth(),
-                        footnoteReferenceMap = footnoteInfo?.identifierToIndexMap, // Pass map
-                        linkHandler = currentLinkHandler, // Pass existing link handler
-                        onFootnoteReferenceClick = onFootnoteReferenceClick // Pass footnote callback
-                    )
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered BlockQuoteNode $index")
-                }
+                // Add () to invoke the returned composable for each renderer call
+                is TableNode -> renderers.renderTable(node, styleSheet, Modifier.fillMaxWidth(), footnoteInfo?.identifierToIndexMap, currentLinkHandler, onFootnoteReferenceClick)()
+                is HorizontalRuleNode -> renderers.renderHorizontalRule(node, styleSheet, Modifier.fillMaxWidth())()
+                is BlockQuoteNode -> renderers.renderBlockQuote(node, styleSheet, Modifier.fillMaxWidth(), footnoteInfo?.identifierToIndexMap, currentLinkHandler, onFootnoteReferenceClick)()
                 is CodeNode -> {
                     if (node.isBlock) {
-                        CodeBlockComposable(node = node, styleSheet = styleSheet, modifier = Modifier.fillMaxWidth())
-                        lastRenderedNode = node
-                        Log.d(TAG, "Rendered CodeBlockNode $index")
+                        renderers.renderCodeBlock(node, styleSheet, Modifier.fillMaxWidth())()
                     } else {
                         textNodeGrouper.add(node) // Buffer inline code
                     }
                 }
                 is TaskListItemNode -> {
-                    // Note: TaskListItem currently does NOT support internal footnote clicks. Needs enhancement.
-                    TaskListItem(
-                        node = node,
-                        styleSheet = styleSheet,
-                        modifier = Modifier.fillMaxWidth(),
-                        linkHandler = currentLinkHandler
-                    )
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered TaskListItemNode $index via Composable")
-                }
-                is ImageNode -> {
-                    ImageComposable(node = node, styleSheet = styleSheet, modifier = Modifier.fillMaxWidth())
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered ImageNode $index")
-                }
-                is ImageLinkNode -> {
-                    ImageLinkComposable(node = node, styleSheet = styleSheet, modifier = Modifier.fillMaxWidth())
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered ImageLinkNode $index")
-                }
-                is HeaderNode -> {
-                    // Headers generally don't contain clickable items
-                    Text(
-                        text = MarkdownRenderer.render(listOf(node), styleSheet, footnoteInfo?.identifierToIndexMap),
-                        style = baseTextStyle,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = styleSheet.headerStyle.bottomPadding)
-                    )
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered HeaderNode $index")
-                }
-                is ListItemNode -> {
-                    val listString = MarkdownRenderer.render(listOf(node), styleSheet, footnoteInfo?.identifierToIndexMap)
-                    ClickableText(
-                        text = listString,
-                        style = baseTextStyle,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { offset ->
-                            listString.getStringAnnotations(Link.URL_TAG, offset, offset).firstOrNull()
-                                ?.let { currentLinkHandler(it.item); return@ClickableText }
-                            listString.getStringAnnotations(FOOTNOTE_REF_TAG, offset, offset).firstOrNull()
-                                ?.let { onFootnoteReferenceClick?.invoke(it.item) } // Pass ID up
+                    // Ensure all arguments are positional and match the definition:
+                    // (node: TaskListItemNode, styleSheet: MarkdownStyleSheet, modifier: Modifier, footnoteReferenceMap: Map<String, Int>?, linkHandler: (String) -> Unit, onFootnoteReferenceClick: ((String) -> Unit)?, onCheckedChange: (TaskListItemNode, Boolean) -> Unit) -> @Composable () -> Unit
+                    renderers.renderTaskListItem( // Call the function
+                        node,
+                        styleSheet,
+                        Modifier.fillMaxWidth(),
+                        footnoteInfo?.identifierToIndexMap,
+                        currentLinkHandler,
+                        onFootnoteReferenceClick,
+                        // Pass lambda directly matching the expected (..., Boolean) -> Unit signature
+                        { taskNode, isChecked ->
+                            onTaskCheckedChange?.invoke(taskNode, isChecked) // Safe call inside
                         }
-                    )
-                    lastRenderedNode = node
-                    Log.d(TAG, "Rendered ListItemNode $index")
+                    )() // Invoke the returned composable lambda
                 }
-                is LineBreakNode -> {
-                    lastRenderedNode = node
-                    Log.d(TAG, "Processed LineBreakNode $index")
-                }
+                is ImageNode -> renderers.renderImage(node, styleSheet, Modifier.fillMaxWidth())()
+                is ImageLinkNode -> renderers.renderImageLink(node, styleSheet, Modifier.fillMaxWidth())()
+                is HeaderNode -> renderers.renderHeader(node, styleSheet, Modifier.fillMaxWidth())()
+                is ListItemNode -> renderers.renderListItem(node, styleSheet, Modifier.fillMaxWidth(), footnoteInfo?.identifierToIndexMap, currentLinkHandler, onFootnoteReferenceClick)()
+                // Add case for DefinitionListNode
+                is DefinitionListNode -> renderers.renderDefinitionList(node, styleSheet, Modifier.fillMaxWidth(), footnoteInfo?.identifierToIndexMap, currentLinkHandler, onFootnoteReferenceClick)()
+                is LineBreakNode -> { /* Handled by spacing logic */ }
                 is TextNode, is BoldTextNode, is ItalicTextNode, is StrikethroughTextNode, is LinkNode,
                 is FootnoteReferenceNode -> { // Add FootnoteReferenceNode to buffer
                     Log.v(TAG, "Buffering ${node::class.simpleName} $index")
                     textNodeGrouper.add(node)
                 }
                 // --- Unexpected Node Handling ---
-                is FootnoteDefinitionsBlockNode, is FootnoteDefinitionNode, is TableCellNode, is TableRowNode -> {
-                    Log.e(TAG, "Unexpected ${node::class.simpleName} encountered in body node rendering loop.")
+                // Add Definition nodes to expected skipped/handled elsewhere nodes
+                is FootnoteDefinitionsBlockNode, is FootnoteDefinitionNode, is TableCellNode, is TableRowNode,
+                is DefinitionTermNode, is DefinitionDetailsNode, is DefinitionItemNode -> {
+                    Log.e(TAG, "Unexpected ${node::class.simpleName} encountered directly in body node rendering loop.")
                 }
             }
+            // Update lastRenderedNode only if the node was actually rendered (not buffered or just spacing)
+            // Add DefinitionListNode to the list of rendered nodes
+            if (node !is LineBreakNode && !(node is CodeNode && !node.isBlock) && node !is TextNode &&
+                node !is BoldTextNode && node !is ItalicTextNode && node !is StrikethroughTextNode &&
+                node !is LinkNode && node !is FootnoteReferenceNode && node !is DefinitionListNode) { // Check if it's NOT DefinitionListNode here
+                 // If it's any other rendered block node, update lastRenderedNode
+                 lastRenderedNode = node
+                 Log.d(TAG, "Rendered ${node::class.simpleName} $index using renderer")
+            } else if (node is DefinitionListNode) { // Explicitly handle DefinitionListNode
+                 lastRenderedNode = node // Update lastRenderedNode for spacing calculation
+                Log.d(TAG, "Rendered ${node::class.simpleName} $index using renderer")
+            } else if (node is LineBreakNode) {
+                 lastRenderedNode = node // Keep track of line breaks for spacing
+                 Log.d(TAG, "Processed LineBreakNode $index")
+            }
+
         } // End bodyNodes loop
 
         // Flush any remaining text group
         flushTextGroup()
 
-        // --- Render Footnote Definitions Block ---
-        if (footnoteInfo != null && footnoteInfo.definitions.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(styleSheet.footnoteBlockPadding))
-            HorizontalRule.Render(
-                color = styleSheet.horizontalRuleStyle.color.copy(alpha = 0.5f),
-                thickness = styleSheet.horizontalRuleStyle.thickness
-            )
-            Spacer(modifier = Modifier.height(styleSheet.blockSpacing / 2))
+        // --- Render Footnote Definitions Block using Renderer ---
+        // Ensure all arguments are positional and match the definition:
+        // (footnoteInfo: FootnoteInfo?, styleSheet: MarkdownStyleSheet, modifier: Modifier, footnotePositions: MutableMap<String, Float>, linkHandler: (String) -> Unit, onFootnoteReferenceClick: ((String) -> Unit)?) -> @Composable () -> Unit
+        renderers.renderFootnoteDefinitions( // Call the function
+            footnoteInfo,
+            styleSheet,
+            Modifier.fillMaxWidth(),
+            footnotePositions,
+            currentLinkHandler,
+            onFootnoteReferenceClick
+        )() // Invoke the returned composable lambda
 
-            footnoteInfo.orderedIdentifiers.forEach { identifier ->
-                val definitionNode = footnoteInfo.definitions[identifier]
-                val displayIndex = footnoteInfo.identifierToIndexMap[identifier]
-
-                if (definitionNode != null && displayIndex != null) {
-                    val definitionPrefix = "[$displayIndex]: "
-                    val definitionContent = MarkdownRenderer.render(
-                        definitionNode.content,
-                        styleSheet.copy(textStyle = styleSheet.footnoteDefinitionStyle),
-                        footnoteInfo.identifierToIndexMap // Pass map for refs inside defs
-                    )
-
-                    val fullDefinitionString = buildAnnotatedString {
-                        withStyle(styleSheet.footnoteDefinitionStyle.toSpanStyle().copy(fontWeight = FontWeight.Bold)) {
-                            append(definitionPrefix)
-                        }
-                        append(definitionContent)
-                    }
-
-                    ClickableText(
-                        text = fullDefinitionString,
-                        style = styleSheet.footnoteDefinitionStyle,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = styleSheet.lineBreakSpacing / 2)
-                            .onPlaced { layoutCoordinates -> // Measure position
-                                val positionY = layoutCoordinates.positionInParent().y
-                                footnotePositions[identifier] = positionY // Update external map
-                                Log.d(TAG, "Stored position for footnote [^$identifier]: $positionY")
-                            },
-                        onClick = { offset ->
-                            // Handle clicks inside definition content
-                            fullDefinitionString.getStringAnnotations(Link.URL_TAG, offset, offset).firstOrNull()
-                                ?.let { currentLinkHandler(it.item); return@ClickableText }
-                            fullDefinitionString.getStringAnnotations(FOOTNOTE_REF_TAG, offset, offset).firstOrNull()
-                                ?.let { onFootnoteReferenceClick?.invoke(it.item) } // Pass ID up
-                        }
-                    )
-                } else {
-                    Log.w(TAG, "Could not find definition or index for ordered identifier: $identifier")
-                }
-            }
-        }
         Log.d(TAG, "MarkdownText rendering complete.")
     }
 }
 
-// --- extractFootnoteInfo Function (No changes from previous step) ---
-private fun extractFootnoteInfo(allNodes: List<MarkdownNode>): FootnoteInfo? {
+// --- extractFootnoteInfo Function (Keep for now, but use imported FootnoteInfo) ---
+// Ideally, this logic should move outside MarkdownText or FootnoteInfo should be passed in.
+private fun extractFootnoteInfo(allNodes: List<MarkdownNode>): FootnoteInfo? { // Return type uses imported FootnoteInfo
     val orderedIdentifiers = mutableListOf<String>()
     val identifierToIndexMap = mutableMapOf<String, Int>()
     var currentIndex = 1

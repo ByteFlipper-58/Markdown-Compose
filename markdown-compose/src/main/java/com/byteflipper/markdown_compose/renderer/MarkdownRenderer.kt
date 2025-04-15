@@ -1,16 +1,15 @@
 package com.byteflipper.markdown_compose.renderer
 
 import android.util.Log
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.*
+import androidx.compose.ui.text.style.BaselineShift
 import com.byteflipper.markdown_compose.model.*
 import com.byteflipper.markdown_compose.renderer.builders.*
 
 private const val TAG = "MarkdownRenderer"
 
 /** Tag used in AnnotatedString for footnote reference annotations. */
-internal const val FOOTNOTE_REF_TAG = "FOOTNOTE_REFERENCE"
+const val FOOTNOTE_REF_TAG = "FOOTNOTE_REFERENCE"
 
 /**
  * Object responsible for rendering a list of MarkdownNode objects into an AnnotatedString.
@@ -97,6 +96,10 @@ object MarkdownRenderer {
             // Internal/Helper Nodes - should not appear in the final render list
             is TableCellNode, is TableRowNode -> Log.e(TAG, "${node::class.simpleName} encountered unexpectedly during renderNode.")
             is FootnoteDefinitionNode -> Log.e(TAG, "FootnoteDefinitionNode encountered unexpectedly during renderNode.")
+            // Definition list nodes should be handled by renderDefinitionList, not here
+            is DefinitionListNode, is DefinitionItemNode, is DefinitionTermNode, is DefinitionDetailsNode -> {
+                Log.w(TAG, "${node::class.simpleName} encountered unexpectedly during inline renderNode. Should be handled by renderDefinitionList.")
+            }
         }
     }
 
@@ -116,11 +119,14 @@ object MarkdownRenderer {
         }
 
         val referenceText = "[$displayIndex]" // Display text like [1], [2]
-        val style = styleSheet.footnoteReferenceStyle // Get style from stylesheet
+        // Combine the stylesheet style with superscript
+        val combinedStyle = styleSheet.footnoteReferenceStyle.merge(
+            SpanStyle(baselineShift = BaselineShift.Superscript)
+        )
 
-        // Add annotation for click handling and apply the specific style
+        // Add annotation for click handling and apply the combined style
         builder.pushStringAnnotation(tag = FOOTNOTE_REF_TAG, annotation = node.identifier)
-        builder.withStyle(style) {
+        builder.withStyle(combinedStyle) {
             append(referenceText)
         }
         builder.pop() // Remove annotation scope

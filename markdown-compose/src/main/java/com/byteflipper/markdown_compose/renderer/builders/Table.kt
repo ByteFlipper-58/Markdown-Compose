@@ -287,8 +287,14 @@ object Table {
                         ColumnAlignment.CENTER -> currentX + (scaledCellWidth - textWidth) / 2f
                     }.coerceIn(currentX, currentX + scaledCellWidth - textWidth) // Ensure text doesn't overflow cell bounds horizontally
 
-                    val textOffsetY = currentY + (scaledCurrentRowHeight - textHeight) / 2f // Center vertically
-                        .coerceIn(currentY, currentY + scaledCurrentRowHeight - textHeight) // Ensure text doesn't overflow cell bounds vertically
+                    // Calculate vertical center position
+                    val verticalCenterOffset = (scaledCurrentRowHeight - textHeight) / 2f
+                    val textOffsetY = (currentY + verticalCenterOffset)
+                         // Ensure text doesn't overflow cell bounds vertically
+                        .coerceIn(currentY, currentY + scaledCurrentRowHeight - textHeight.coerceAtLeast(0f)) // Ensure textHeight is not negative
+
+                    // Add detailed logging for vertical alignment calculation
+                    Log.v(TAG, "Cell($rowIndex, $columnIndex): currentY=$currentY, rowH=$scaledCurrentRowHeight, textH=$textHeight, centerOffset=$verticalCenterOffset, finalOffsetY=$textOffsetY")
 
                     val textDrawOffset = Offset(textOffsetX, textOffsetY)
 

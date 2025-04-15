@@ -10,9 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
-import com.byteflipper.markdown_compose.model.TaskListItemNode
+import com.byteflipper.markdown_compose.model.* // Import all models for Link, FootnoteInfo etc.
 import com.byteflipper.markdown_compose.parser.BlockParser
+import com.byteflipper.markdown_compose.renderer.FOOTNOTE_REF_TAG // Import tag
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 import android.util.Log
 
@@ -24,14 +24,20 @@ private const val TAG = "TaskListItemComposable"
  * @param node The TaskListItemNode containing the checked state and content.
  * @param styleSheet The stylesheet defining visual appearance, including checkbox colors.
  * @param modifier Modifier for layout adjustments of the Row.
+ * @param footnoteReferenceMap Map for resolving footnote display indices.
  * @param linkHandler The callback to handle link clicks within the task item text.
+ * @param onFootnoteReferenceClick Callback for footnote reference clicks.
+ * @param onCheckedChange Callback invoked when the user clicks the checkbox, providing the node and the *intended* new checked state.
  */
 @Composable
 fun TaskListItem (
     node: TaskListItemNode,
     styleSheet: MarkdownStyleSheet,
     modifier: Modifier = Modifier,
-    linkHandler: (url: String) -> Unit
+    footnoteReferenceMap: Map<String, Int>?, // Added
+    linkHandler: (url: String) -> Unit,
+    onFootnoteReferenceClick: ((identifier: String) -> Unit)?, // Added
+    onCheckedChange: (node: TaskListItemNode, isChecked: Boolean) -> Unit // Added
 ) {
     val logicalIndentLevel = node.indentLevel / BlockParser.INPUT_SPACES_PER_LEVEL
     val indentPadding = styleSheet.listStyle.indentPadding * logicalIndentLevel
@@ -48,18 +54,24 @@ fun TaskListItem (
         // --- Checkbox styling (remains the same) ---
         val disabledCheckedContainerColor = taskStyle.disabledCheckboxContainerColor
             ?: (taskStyle.checkedCheckboxContainerColor ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.38f)
-        val disabledUncheckedBorderColor = taskStyle.disabledCheckboxContainerColor
-            ?: (taskStyle.uncheckedCheckboxBorderColor ?: defaultOutline).copy(alpha = 0.38f)
+        // Use enabled colors if checkbox is interactive
+        val checkedContainerColor = taskStyle.checkedCheckboxContainerColor ?: MaterialTheme.colorScheme.primary
+        val uncheckedBorderColor = taskStyle.uncheckedCheckboxBorderColor ?: defaultOutline
+        val checkmarkColor = taskStyle.checkedCheckboxIndicatorColor ?: MaterialTheme.colorScheme.onPrimary
 
         Checkbox(
             checked = node.isChecked,
-            onCheckedChange = null,
-            enabled = false,
+            onCheckedChange = { newCheckedState ->
+                Log.d(TAG, "Checkbox clicked for task: '${node.content.firstOrNull()?.toString()?.take(20)}...', new state: $newCheckedState")
+                onCheckedChange(node, newCheckedState) // Notify caller about the change attempt
+            },
+            enabled = true, // Make checkbox interactive
             modifier = Modifier.size(24.dp),
             colors = CheckboxDefaults.colors(
-                disabledCheckedColor = disabledCheckedContainerColor,
-                disabledUncheckedColor = disabledUncheckedBorderColor,
-                disabledIndeterminateColor = disabledCheckedContainerColor
+                checkedColor = checkedContainerColor,
+                uncheckedColor = uncheckedBorderColor, // Border color when unchecked
+                checkmarkColor = checkmarkColor
+                // Use default disabled colors if needed, but it's enabled now
             )
         )
 
@@ -72,7 +84,8 @@ fun TaskListItem (
             baseTextStyle
         }
 
-        val contentString = MarkdownRenderer.render(node.content, styleSheet)
+        // Render content with footnote map
+        val contentString = MarkdownRenderer.render(node.content, styleSheet, footnoteReferenceMap)
 
         ClickableText(
             text = contentString,
@@ -83,6 +96,14 @@ fun TaskListItem (
                     .firstOrNull()?.let { annotation ->
                         Log.i(TAG, "Link clicked in TaskListItem: ${annotation.item}")
                         linkHandler(annotation.item)
+                        return@ClickableText // Handled link
+                    }
+                // Handle footnote clicks
+                contentString
+                    .getStringAnnotations(FOOTNOTE_REF_TAG, offset, offset)
+                    .firstOrNull()?.let { annotation ->
+                        Log.i(TAG, "Footnote ref [^${annotation.item}] clicked in TaskListItem")
+                        onFootnoteReferenceClick?.invoke(annotation.item)
                     }
             }
         )

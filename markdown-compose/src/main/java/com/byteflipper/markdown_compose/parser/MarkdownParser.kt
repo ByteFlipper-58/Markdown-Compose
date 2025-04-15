@@ -22,7 +22,7 @@ object MarkdownParser {
      * @param input The raw Markdown input as a string.
      * @return A list of parsed MarkdownNode objects.
      */
-    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    // @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM) // Removed - Not needed by underlying parsers
     fun parse(input: String): List<MarkdownNode> {
         return try {
             Log.d(TAG, "Starting markdown parsing")
