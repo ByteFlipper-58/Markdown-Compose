@@ -1,9 +1,9 @@
 package com.byteflipper.markdown_compose.parser
 
 import android.util.Log
-import com.byteflipper.markdown_compose.model.ListItemNode
-import com.byteflipper.markdown_compose.model.MarkdownNode
-import com.byteflipper.markdown_compose.model.TaskListItemNode
+import com.byteflipper.markdown_compose.model.ir.ListItemElement // Import IR element
+import com.byteflipper.markdown_compose.model.ir.MarkdownElement // Import IR element
+import com.byteflipper.markdown_compose.model.ir.TaskListItemElement // Import IR element
 
 private const val TAG = "ListParser"
 
@@ -30,9 +30,9 @@ internal object ListParser {
      * Parses a single line as a list item (task, ordered, or unordered).
      *
      * @param line The line containing the list item.
-     * @return The parsed `ListItemNode` or `TaskListItemNode`, or null if parsing fails.
+     * @return The parsed `ListItemElement` or `TaskListItemElement`, or null if parsing fails.
      */
-    fun parseListItem(line: String): MarkdownNode? {
+    fun parseListItem(line: String): MarkdownElement? { // Return MarkdownElement?
 
         // 1. Check for Task List Item
         taskListRegex.matchEntire(line)?.let { match ->
@@ -40,8 +40,9 @@ internal object ListParser {
             val indentLevel = indentation.length // Use raw space count
             val isChecked = checkedChar.equals("x", ignoreCase = true)
             Log.d(TAG, "Detected Task List Item (checked: $isChecked, indentSpaces: $indentLevel)")
-            val inlineNodes = InlineParser.parseInline(contentStr.trim()) // Use InlineParser
-            return TaskListItemNode(inlineNodes, indentLevel, isChecked)
+            val children = InlineParser.parseInline(contentStr.trim()) // InlineParser now returns List<MarkdownElement>
+            // Note: TaskListItemElement doesn't store indentLevel directly, it's handled by nesting within ListElement/ListItemElement
+            return TaskListItemElement(children = children, isChecked = isChecked) // Create TaskListItemElement
         }
 
         // 2. Check for Unordered List Item (if not a task list)
@@ -49,8 +50,9 @@ internal object ListParser {
             val (indentation, contentStr) = match.destructured
             val indentLevel = indentation.length // Use raw space count
             Log.d(TAG, "Detected Unordered List Item (indentSpaces: $indentLevel)")
-            val inlineNodes = InlineParser.parseInline(contentStr.trim()) // Use InlineParser
-            return ListItemNode(inlineNodes, indentLevel, isOrdered = false)
+            val children = InlineParser.parseInline(contentStr.trim()) // InlineParser now returns List<MarkdownElement>
+            // Note: ListItemElement doesn't store indentLevel directly. Order is null for unordered.
+            return ListItemElement(children = children, order = null) // Create ListItemElement (unordered)
         }
 
         // 3. Check for Ordered List Item
@@ -60,8 +62,9 @@ internal object ListParser {
             val order = orderStr.toIntOrNull()
             Log.d(TAG, "Detected Ordered List Item (order: $order, indentSpaces: $indentLevel)")
             if (order != null) {
-                val inlineNodes = InlineParser.parseInline(contentStr.trim()) // Use InlineParser
-                return ListItemNode(inlineNodes, indentLevel, isOrdered = true, order = order)
+                val children = InlineParser.parseInline(contentStr.trim()) // InlineParser now returns List<MarkdownElement>
+                // Note: ListItemElement doesn't store indentLevel directly.
+                return ListItemElement(children = children, order = order) // Create ListItemElement (ordered)
             } else {
                 Log.w(TAG, "Failed to parse order number for potential OL item. Line: $line")
                 // Fallthrough to return null

@@ -1,14 +1,14 @@
 package com.byteflipper.markdown_compose.parser
 
 import android.util.Log
-import com.byteflipper.markdown_compose.model.*
+import com.byteflipper.markdown_compose.model.ir.* // Import new IR elements
 
 private const val TAG = "InlineParser"
 private const val DEBUG = false // Toggle to enable/disable verbose logging
 
 /**
  * Object responsible for parsing inline Markdown elements such as links, bold, italic,
- * strikethrough, code spans, images, and image links.
+ * strikethrough, code spans, images, and image links, returning MarkdownElement objects.
  */
 object InlineParser {
 
@@ -19,15 +19,15 @@ object InlineParser {
 
     /**
      * Parses inline Markdown elements within a given text string and returns a list of MarkdownNode objects.
-     * Handles basic nesting and ignores markdown syntax within code spans.
+     * Handles basic nesting and ignores markdown syntax within code spans. Recursively parses content within elements like bold, italic, etc.
      *
      * @param text The raw text line or part of a line containing potential inline markdown.
-     * @return A list of parsed inline MarkdownNode objects (TextNode, BoldTextNode, ImageNode, etc.).
+     * @return A list of parsed inline MarkdownElement objects (MarkdownTextElement, BoldElement, ImageElement, etc.).
      */
-    fun parseInline(text: String): List<MarkdownNode> {
-        if (DEBUG) Log.d(TAG, "--- Starting parseInline for text: \"$text\" ---")
+    fun parseInline(text: String): List<MarkdownElement> { // Return List<MarkdownElement>
+        if (DEBUG) Log.d(TAG, "--- Starting parseInline (IR) for text: \"$text\" ---")
 
-        val nodes = mutableListOf<MarkdownNode>()
+        val elements = mutableListOf<MarkdownElement>() // Changed from nodes
         val length = text.length
         var currentIndex = 0
         val currentText = StringBuilder(length / 2) // Pre-allocate with estimated capacity
@@ -41,10 +41,10 @@ object InlineParser {
             if (parseResult != null) {
                 // A markdown element was found, add it to the list
                 if (currentText.isNotEmpty()) {
-                    nodes.add(TextNode(currentText.toString()))
+                    elements.add(MarkdownTextElement(currentText.toString())) // Changed to MarkdownTextElement
                     currentText.clear()
                 }
-                nodes.add(parseResult.first)
+                elements.add(parseResult.first) // Add the parsed MarkdownElement
                 currentIndex = parseResult.second
             } else {
                 // No special element, append to plain text
@@ -55,18 +55,18 @@ object InlineParser {
 
         // Add any remaining text
         if (currentText.isNotEmpty()) {
-            nodes.add(TextNode(currentText.toString()))
+            elements.add(MarkdownTextElement(currentText.toString())) // Changed to MarkdownTextElement
         }
 
-        if (DEBUG) Log.d(TAG, "--- Finished parseInline. Total nodes: ${nodes.size} ---")
-        return nodes
+        if (DEBUG) Log.d(TAG, "--- Finished parseInline (IR). Total elements: ${elements.size} ---")
+        return elements // Return List<MarkdownElement>
     }
 
     /**
      * Attempts to parse the next markdown element at the given position.
-     * Returns the parsed node and the next index, or null if no element was found.
+     * Returns the parsed element and the next index, or null if no element was found.
      */
-    private fun parseNextElement(text: String, index: Int): Pair<MarkdownNode, Int>? {
+    private fun parseNextElement(text: String, index: Int): Pair<MarkdownElement, Int>? { // Return Pair<MarkdownElement, Int>?
         if (index >= text.length) return null
 
         // Try each markdown element in priority order
@@ -74,22 +74,22 @@ object InlineParser {
             // 1. Escaped character
             text[index] == '\\' && index + 1 < text.length && ESCAPABLE_CHARS.contains(text[index + 1]) -> {
                 val escapedChar = text[index + 1]
-                Pair(TextNode(escapedChar.toString()), index + 2)
+                Pair(MarkdownTextElement(escapedChar.toString()), index + 2) // Changed to MarkdownTextElement
             }
 
             // 2. Code span
             text[index] == '`' -> tryParseCodeSpan(text, index)
 
-            // 3. Footnote Reference (НОВОЕ - проверяем *перед* обычными ссылками/картинками)
+            // 3. Footnote Reference (check *before* links/images)
             text[index] == '[' && text.getOrNull(index + 1) == '^' ->
-                tryParseFootnoteReference(text, index)
+                tryParseFootnoteReference(text, index) // Returns Pair<FootnoteReferenceElement, Int>?
 
             // 4. Link or image link
-            text[index] == '[' -> tryParseLinkOrImageLink(text, index)
+            text[index] == '[' -> tryParseLinkOrImageLink(text, index) // Returns Pair<MarkdownElement, Int>?
 
             // 5. Image (must check before other elements as it starts with !)
             index + 1 < text.length && text[index] == '!' && text[index + 1] == '[' ->
-                tryParseImage(text, index)
+                tryParseImage(text, index) // Returns Pair<ImageElement, Int>?
 
             // 6. Strikethrough
             index + 1 < text.length && text[index] == '~' && text[index + 1] == '~' ->
@@ -99,13 +99,13 @@ object InlineParser {
             index + 1 < text.length && ((text[index] == '*' && text[index + 1] == '*') ||
                     (text[index] == '_' && text[index + 1] == '_')) -> {
                 val delimiter = text.substring(index, index + 2)
-                tryParseEmphasis(text, index, delimiter, isBold = true)
+                tryParseEmphasis(text, index, delimiter, isBold = true) // Returns Pair<BoldElement, Int>?
             }
 
             // 8. Italic (single star or single underscore)
             text[index] == '*' || text[index] == '_' -> {
                 val delimiter = text[index].toString()
-                tryParseEmphasis(text, index, delimiter, isBold = false)
+                tryParseEmphasis(text, index, delimiter, isBold = false) // Returns Pair<ItalicElement, Int>?
             }
 
             // No markdown element found
@@ -116,14 +116,15 @@ object InlineParser {
     /**
      * Tries to parse an inline code span `code`.
      */
-    private fun tryParseCodeSpan(text: String, startIndex: Int): Pair<CodeNode, Int>? {
+    private fun tryParseCodeSpan(text: String, startIndex: Int): Pair<CodeElement, Int>? { // Return CodeElement
         if (startIndex >= text.length || text[startIndex] != '`') return null
 
         var endIndex = startIndex + 1
         while (endIndex < text.length) {
             if (text[endIndex] == '`') {
                 val codeContent = text.substring(startIndex + 1, endIndex).trim()
-                return Pair(CodeNode(codeContent, isBlock = false), endIndex + 1)
+                // language is null for inline code
+                return Pair(CodeElement(content = codeContent, language = null, isBlock = false), endIndex + 1) // Create CodeElement
             }
             endIndex++
         }
@@ -135,7 +136,7 @@ object InlineParser {
     /**
      * Tries to parse an image ![alt](url)
      */
-    private fun tryParseImage(text: String, startIndex: Int): Pair<ImageNode, Int>? {
+    private fun tryParseImage(text: String, startIndex: Int): Pair<ImageElement, Int>? { // Return ImageElement
         if (!text.startsWith("![", startIndex)) return null
 
         val altTextEnd = findMatchingBracket(text, startIndex + 1, '[', ']')
@@ -150,13 +151,13 @@ object InlineParser {
         // Skip empty URLs
         if (url.isBlank()) return null
 
-        return Pair(ImageNode(altText, url), urlEnd + 1)
+        return Pair(ImageElement(url = url, altText = altText), urlEnd + 1) // Create ImageElement
     }
 
     /**
      * Tries parsing a link [text](url) or an image link [![alt](img)](url).
      */
-    private fun tryParseLinkOrImageLink(text: String, startIndex: Int): Pair<MarkdownNode, Int>? {
+    private fun tryParseLinkOrImageLink(text: String, startIndex: Int): Pair<MarkdownElement, Int>? { // Return MarkdownElement
         if (!text.startsWith("[", startIndex)) return null
 
         val contentEnd = findMatchingBracket(text, startIndex, '[', ']')
@@ -182,25 +183,28 @@ object InlineParser {
                 val imgAltText = trimmedContent.substring(2, altTextEnd)
                 val imgUrl = trimmedContent.substring(altTextEnd + 2, trimmedContent.length - 1)
 
-                return Pair(ImageLinkNode(imgAltText, imgUrl, linkUrl), finalNextIndex)
+                // Create ImageLinkElement
+                return Pair(ImageLinkElement(imageUrl = imgUrl, altText = imgAltText, linkUrl = linkUrl), finalNextIndex)
             }
         }
 
-        // Default: create regular link node
-        return Pair(LinkNode(content, linkUrl), finalNextIndex)
+        // Default: create regular link element, parse content recursively
+        val linkChildren = parseInline(content) // Recursively parse link content
+        return Pair(LinkElement(url = linkUrl, children = linkChildren), finalNextIndex) // Create LinkElement
     }
 
     /**
      * Tries parsing strikethrough ~~text~~.
      */
-    private fun tryParseStrikethrough(text: String, startIndex: Int): Pair<StrikethroughTextNode, Int>? {
+    private fun tryParseStrikethrough(text: String, startIndex: Int): Pair<StrikethroughElement, Int>? { // Return StrikethroughElement
         val delimiter = "~~"
         if (!text.startsWith(delimiter, startIndex)) return null
 
         val end = findClosingTag(text, startIndex + delimiter.length, delimiter)
         if (end != -1) {
             val content = text.substring(startIndex + delimiter.length, end)
-            return Pair(StrikethroughTextNode(content), end + delimiter.length)
+            val children = parseInline(content) // Recursively parse content
+            return Pair(StrikethroughElement(children = children), end + delimiter.length) // Create StrikethroughElement
         }
 
         return null
@@ -214,7 +218,7 @@ object InlineParser {
         startIndex: Int,
         delimiter: String,
         isBold: Boolean
-    ): Pair<MarkdownNode, Int>? {
+    ): Pair<MarkdownElement, Int>? { // Return MarkdownElement (BoldElement or ItalicElement)
         if (!text.startsWith(delimiter, startIndex)) return null
 
         // For italic (single char delimiter), avoid matching inside bold
@@ -226,8 +230,13 @@ object InlineParser {
         val end = findClosingTag(text, startIndex + delimiter.length, delimiter)
         if (end != -1) {
             val content = text.substring(startIndex + delimiter.length, end)
-            val node = if (isBold) BoldTextNode(content) else ItalicTextNode(content)
-            return Pair(node, end + delimiter.length)
+            val children = parseInline(content) // Recursively parse content
+            val element: MarkdownElement = if (isBold) {
+                BoldElement(children = children) // Create BoldElement
+            } else {
+                ItalicElement(children = children) // Create ItalicElement
+            }
+            return Pair(element, end + delimiter.length)
         }
 
         return null
@@ -236,7 +245,7 @@ object InlineParser {
     /**
      * Tries to parse a footnote reference like [^identifier].
      */
-    private fun tryParseFootnoteReference(text: String, startIndex: Int): Pair<FootnoteReferenceNode, Int>? {
+    private fun tryParseFootnoteReference(text: String, startIndex: Int): Pair<FootnoteReferenceElement, Int>? { // Return FootnoteReferenceElement
         // Match the pattern starting from the current index
         val matchResult = footnoteRefRegex.find(text, startIndex)
 
@@ -245,7 +254,8 @@ object InlineParser {
             val identifier = matchResult.groupValues[1]
             val nextIndex = matchResult.range.last + 1
             if (DEBUG) Log.d(TAG, "Parsed Footnote Reference: identifier='$identifier', nextIndex=$nextIndex")
-            return Pair(FootnoteReferenceNode(identifier), nextIndex)
+            // displayIndex is populated later by the renderer or a pre-pass
+            return Pair(FootnoteReferenceElement(identifier = identifier, displayIndex = null), nextIndex) // Create FootnoteReferenceElement
         }
         if (DEBUG) Log.v(TAG, "Potential footnote ref start '[' found, but pattern mismatch at index $startIndex")
         return null // Didn't match correctly at the start index

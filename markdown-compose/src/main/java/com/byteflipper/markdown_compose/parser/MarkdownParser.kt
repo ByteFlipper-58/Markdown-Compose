@@ -1,48 +1,56 @@
 // File: markdown-compose/src/main/java/com/byteflipper/markdown_compose/parser/MarkdownParser.kt
 package com.byteflipper.markdown_compose.parser
 
-import android.os.Build
 import android.util.Log
-import androidx.annotation.RequiresApi
-import com.byteflipper.markdown_compose.model.*
+import com.byteflipper.markdown_compose.model.ir.MarkdownDocument
+import com.byteflipper.markdown_compose.model.ir.MarkdownElement
+import com.byteflipper.markdown_compose.model.ir.MarkdownTextElement
+// Import FootnoteDefinitionElement if BlockParser returns it, adjust as needed
+// import com.byteflipper.markdown_compose.model.ir.FootnoteDefinitionElement
 
 private const val TAG = "MarkdownParser"
 
 /**
- * Object responsible for parsing Markdown input and converting it into a list of MarkdownNode objects.
- * It uses the BlockParser to handle different block-level elements of the Markdown.
+ * Object responsible for parsing Markdown input and converting it into a MarkdownDocument
+ * representing the Intermediate Representation (IR) of the document.
+ * It uses BlockParser to handle block-level elements.
  */
 object MarkdownParser {
 
+    // TODO: Define a result class for BlockParser if needed, e.g.:
+    // data class ParseResult(val elements: List<MarkdownElement>, val definitions: Map<String, FootnoteDefinitionElement>)
+
     /**
-     * Parses the provided Markdown input and returns a list of MarkdownNode objects representing
-     * the parsed structure, potentially including a FootnoteDefinitionsBlockNode at the end.
-     * In case of an error, it logs the error and returns the input as plain text.
+     * Parses the provided Markdown input and returns a MarkdownDocument representing
+     * the parsed structure. Footnote definitions are extracted but stored separately
+     * (handling deferred to renderer).
+     * In case of an error, it logs the error and returns a document containing the input as plain text.
      *
      * @param input The raw Markdown input as a string.
-     * @return A list of parsed MarkdownNode objects.
+     * @return A MarkdownDocument object.
      */
-    // @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM) // Removed - Not needed by underlying parsers
-    fun parse(input: String): List<MarkdownNode> {
+    fun parse(input: String): MarkdownDocument {
         return try {
-            Log.d(TAG, "Starting markdown parsing")
-            // Parsing the input using BlockParser to handle block-level elements and definitions.
-            val parseResult = BlockParser.parseBlocks(input)
-            val bodyNodes = parseResult.nodes.toMutableList()
-            val definitions = parseResult.definitions
+            Log.d(TAG, "Starting markdown parsing for IR")
+            // BlockParser needs to be updated to return List<MarkdownElement>
+            // and potentially Map<String, FootnoteDefinitionElement>
+            // For now, assume it returns the list of top-level elements.
+            // val parseResult = BlockParser.parseBlocks(input) // Assuming BlockParser is updated
+            // val elements = parseResult.elements
+            // val definitions = parseResult.definitions // Store or pass definitions if needed
 
-            // If definitions were found, add the special block node at the end.
-            if (definitions.isNotEmpty()) {
-                bodyNodes.add(FootnoteDefinitionsBlockNode(definitions))
-                Log.d(TAG, "Added FootnoteDefinitionsBlockNode with ${definitions.size} definitions.")
-            }
+            // Placeholder: Assume BlockParser returns List<MarkdownElement> directly for now
+            val elements: List<MarkdownElement> = BlockParser.parseBlocks(input) // Needs update in BlockParser
 
-            Log.d(TAG, "Completed markdown parsing successfully. Total nodes: ${bodyNodes.size}")
-            bodyNodes.toList() // Return immutable list
+            // TODO: Handle footnote definitions extracted by BlockParser if necessary for the IR structure
+            // Currently, definitions are implicitly handled by the renderer looking them up.
+
+            Log.d(TAG, "Completed markdown parsing successfully. Root elements: ${elements.size}")
+            MarkdownDocument(children = elements)
         } catch (e: Exception) {
-            // In case of an error, log the exception and return the input as plain text.
-            Log.e(TAG, "Error parsing markdown: ${e.message}", e)
-            listOf(TextNode(input)) // Fallback to plain text
+            // In case of an error, log the exception and return the input as a single text element.
+            Log.e(TAG, "Error parsing markdown into IR: ${e.message}", e)
+            MarkdownDocument(children = listOf(MarkdownTextElement(input))) // Fallback
         }
     }
 }

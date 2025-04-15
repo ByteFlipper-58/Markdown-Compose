@@ -1,7 +1,7 @@
 package com.byteflipper.markdown_compose.parser
 
 import android.util.Log
-import com.byteflipper.markdown_compose.model.CodeNode
+import com.byteflipper.markdown_compose.model.ir.CodeElement // Import IR element
 
 private const val TAG = "CodeBlockParser"
 
@@ -24,10 +24,10 @@ internal object CodeBlockParser {
      *
      * @param lines The list of all lines in the input.
      * @param startIndex The index of the line where the code block starts (the opening fence).
-     * @return A Pair containing the parsed `CodeNode` and the number of lines consumed (including fences),
+     * @return A Pair containing the parsed `CodeElement` and the number of lines consumed (including fences),
      *         or null if parsing fails (e.g., no closing fence).
      */
-    fun parse(lines: List<String>, startIndex: Int): Pair<CodeNode, Int>? {
+    fun parse(lines: List<String>, startIndex: Int): Pair<CodeElement, Int>? { // Return CodeElement
         val startLine = lines[startIndex].trim()
         val codeBlockMatch = codeBlockFenceRegex.matchEntire(startLine)
             ?: return null // Should not happen if isStartOfCodeBlock was true
@@ -46,8 +46,8 @@ internal object CodeBlockParser {
                 Log.d(TAG, "Found Code Block end at line $currentIndex")
                 // Successfully found end fence
                 val codeString = codeContentBuilder.toString().dropLastWhile { it == '\n' }
-                val node = CodeNode(codeString, language = language, isBlock = true)
-                return Pair(node, consumedLines)
+                val element = CodeElement(content = codeString, language = language, isBlock = true) // Create CodeElement
+                return Pair(element, consumedLines)
             }
             codeContentBuilder.append(currentLine).append("\n")
             currentIndex++
