@@ -1,30 +1,19 @@
 package com.byteflipper.markdown_compose
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.net.Uri
+import android.annotation.SuppressLint
 import android.util.Log
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.runtime.*
+import androidx.compose.foundation.ScrollState // Import ScrollState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope // Import rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.net.Uri
-import android.util.Log
-import androidx.compose.foundation.layout.*
-// import androidx.compose.material3.LocalTextStyle // Not used directly anymore
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-// import androidx.compose.ui.unit.dp // Not used directly anymore
-import com.byteflipper.markdown_compose.model.MarkdownStyleSheet // Keep for now
-import com.byteflipper.markdown_compose.model.defaultMarkdownStyleSheet // Keep for now
-import com.byteflipper.markdown_compose.model.ir.TaskListItemElement // Import specific IR type needed for callback
-import com.byteflipper.markdown_compose.parser.MarkdownParser // Use updated parser
-import com.byteflipper.markdown_compose.renderer.ComposeMarkdownRenderer // Import the new renderer
-// Remove old model imports if no longer needed
-// import com.byteflipper.markdown_compose.model.*
+import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
+import com.byteflipper.markdown_compose.model.defaultMarkdownStyleSheet
+import kotlinx.coroutines.CoroutineScope // Import CoroutineScope
+import kotlinx.coroutines.launch // Import launch
+import com.byteflipper.markdown_compose.model.ir.TaskListItemElement
+import com.byteflipper.markdown_compose.parser.MarkdownParser
+import com.byteflipper.markdown_compose.renderer.ComposeMarkdownRenderer
 
 private const val TAG = "MarkdownText"
 
@@ -39,47 +28,73 @@ private const val TAG = "MarkdownText"
  * @param styleSheet The stylesheet defining the visual appearance of Markdown elements.
  * @param footnotePositions A mutable map provided by the caller to store the measured Y positions
  *                          (relative to the start of the scrollable content) of footnote definitions.
- *                          The key is the footnote identifier (e.g., "1", "note"), the value is the top Y position in pixels.
- *                          `MarkdownText` will update this map.
+ *                          This parameter is no longer used for scrolling, which now relies on ScrollState/LazyListState. Kept for potential future use or remove if definitely unused.
+ * @param scrollState The ScrollState of the parent scrollable container (e.g., Column with verticalScroll). Required for footnote scrolling.
+ * @param coroutineScope A CoroutineScope to launch the scroll animation. Typically obtained via `rememberCoroutineScope()`.
  * @param onLinkClick Custom handler for external links ([text](url)). If null, uses default ACTION_VIEW intent.
  * @param onFootnoteReferenceClick Custom handler for footnote reference clicks ([^id]). Parameter is the identifier.
- *                                 The caller should use this identifier to look up the position in `footnotePositions`
- *                                 and trigger scrolling. Default implementation logs the click.
+ *                                 Default implementation uses the provided scrollState and coroutineScope to scroll towards the bottom.
  * @param onTaskCheckedChange Callback invoked when a task list item's checkbox is clicked.
  *                            Provides the specific [TaskListItemElement] and the intended new checked state.
  *                            The caller is responsible for updating the source data and triggering recomposition.
  * // TODO: Update renderers parameter to use MarkdownElement types when refactored
  * // @param renderers A set of composable functions to render different Markdown elements. Allows customization.
  */
+// Added SuppressLint because default value for coroutineScope uses rememberCoroutineScope()
+// which should ideally be called directly in the composable body, but here it's for the default lambda.
+@SuppressLint("ComposableLambdaParameterPosition")
 @Composable
 fun MarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
     styleSheet: MarkdownStyleSheet = defaultMarkdownStyleSheet(),
-    footnotePositions: MutableMap<String, Float>, // TODO: Pass this to the renderer or handle position measurement differently
-    onLinkClick: ((url: String) -> Unit)? = null, // TODO: Pass this to the renderer
-    onFootnoteReferenceClick: ((identifier: String) -> Unit)? = { id -> Log.i(TAG, "Footnote ref clicked: [^$id]") }, // TODO: Pass this to the renderer
-    onTaskCheckedChange: ((node: TaskListItemElement, isChecked: Boolean) -> Unit)? = { node, checked -> Log.i(TAG, "Task item checked: $checked (Default handler)") }, // Updated signature, TODO: Pass this to the renderer
-    // renderers: MarkdownRenderers = defaultMarkdownRenderers() // Commented out - incompatible with IR
+    scrollState: ScrollState, // Added ScrollState parameter
+    coroutineScope: CoroutineScope = rememberCoroutineScope(), // Added CoroutineScope with default
+    footnotePositions: MutableMap<String, Float>? = null, // Made optional, as it's not used for scrolling now
+    onLinkClick: ((url: String) -> Unit)? = null,
+    onFootnoteReferenceClick: ((identifier: String) -> Unit)? = { identifier ->
+        // Default handler: Scroll towards the bottom using provided scope and state
+        Log.d(TAG, "Default footnote click handler: Scrolling towards bottom for ref [^$identifier]")
+        coroutineScope.launch {
+            // Scroll to the end where footnotes are located
+            scrollState.animateScrollTo(scrollState.maxValue)
+            // Note: Precise scrolling to the specific footnote definition requires
+            // either LazyListState or manual position measurement, which is more complex.
+        }
+    },
+    onTaskCheckedChange: ((node: TaskListItemElement, isChecked: Boolean) -> Unit)? = { node, checked -> Log.i(TAG, "Task item checked: $checked (Default handler)") },
 ) {
     // --- Parsing ---
-    // Use the updated parser which returns MarkdownDocument (IR)
     val document = remember(markdown) { MarkdownParser.parse(markdown) }
     Log.d(TAG, "Parsed markdown into IR document with ${document.children.size} root elements.")
 
     // --- Renderer Instantiation ---
-    // TODO: Pass callbacks (onLinkClick, etc.) and footnotePositions map to the renderer instance
-    val renderer = remember(styleSheet, modifier /*, other dependencies like callbacks */) {
+    // Pass the potentially overridden onFootnoteReferenceClick lambda
+    val actualOnFootnoteReferenceClick = onFootnoteReferenceClick ?: { identifier ->
+        // Replicate default logic if user passes null explicitly
+        Log.d(TAG, "Default footnote click handler (invoked via null override): Scrolling towards bottom for ref [^$identifier]")
+        coroutineScope.launch {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+
+    val renderer = remember(styleSheet, modifier, onLinkClick, actualOnFootnoteReferenceClick, onTaskCheckedChange) {
         ComposeMarkdownRenderer(
             styleSheet = styleSheet,
-            modifier = modifier
+            modifier = modifier, // Modifier is applied within the renderer's renderDocument Column
+            onLinkClick = onLinkClick,
+            onFootnoteReferenceClick = onFootnoteReferenceClick,
+            onTaskCheckedChange = onTaskCheckedChange
+            // TODO: Pass footnotePositions map if needed by renderer internally
             // customRenderers = renderers // TODO: Update customRenderers to work with IR
         )
     }
 
     // --- Rendering ---
-    // Call the renderer's top-level function and invoke the returned Composable
-    renderer.renderDocument(document)()
+    // Call the renderer's top-level function to get the Composable lambda
+    val renderFunction = renderer.renderDocument(document)
+    // Invoke the returned Composable lambda to perform the rendering
+    renderFunction()
 
     Log.d(TAG, "MarkdownText rendering initiated via ComposeMarkdownRenderer.")
 
@@ -87,6 +102,3 @@ fun MarkdownText(
     // The complex Column loop, flushTextGroup, spacing logic, footnote extraction,
     // and direct calls to old renderers are now handled within ComposeMarkdownRenderer.
 }
-
-// --- extractFootnoteInfo Function Removed ---
-// Footnote handling logic is now encapsulated within ComposeMarkdownRenderer.

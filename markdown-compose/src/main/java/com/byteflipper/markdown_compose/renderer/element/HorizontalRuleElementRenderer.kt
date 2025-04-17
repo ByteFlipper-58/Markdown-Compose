@@ -1,48 +1,44 @@
-package com.byteflipper.markdown_compose.renderer.canvas
+package com.byteflipper.markdown_compose.renderer.element
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
+import com.byteflipper.markdown_compose.model.ir.HorizontalRuleElement
+import com.byteflipper.markdown_compose.renderer.ComposeMarkdownRenderer
 
 /**
- * Object responsible for rendering horizontal rules (dividers) in Markdown.
+ * Renders a horizontal rule element.
  */
-object HorizontalRule {
+internal object HorizontalRuleElementRenderer {
+    // Removed @Composable annotation
+    fun render(
+        renderer: ComposeMarkdownRenderer,
+        element: HorizontalRuleElement // Parameter is unused but kept for consistency
+    ): @Composable () -> Unit = {
+        val hrStyle = renderer.styleSheet.horizontalRuleStyle
+        val color = hrStyle.color
+        val thickness = hrStyle.thickness
+        val style = hrStyle.style
 
-    /**
-     * Renders a horizontal rule (divider) using Jetpack Compose's Canvas API.
-     *
-     * @param color The color of the horizontal rule.
-     * @param thickness The thickness of the rule.
-     * @param modifier Modifier for layout adjustments.
-     * @param style The style of the rule: "solid", "dashed", or "dotted" (optional).
-     */
-    @Composable
-    fun Render(
-        color: Color,
-        thickness: Dp,
-        modifier: Modifier = Modifier,
-        style: String = "solid"
-    ) {
         val pathEffect = when (style) {
             "dashed" -> PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
             "dotted" -> PathEffect.dashPathEffect(floatArrayOf(2f, 5f), 0f)
-            else -> null
+            else -> null // Solid
         }
         val thicknessPx = with(LocalDensity.current) { thickness.toPx() }
 
         Canvas(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(thickness)
+                .padding(vertical = renderer.styleSheet.blockSpacing / 2) // Use block spacing from main styleSheet
         ) {
             drawLine(
                 color = color,

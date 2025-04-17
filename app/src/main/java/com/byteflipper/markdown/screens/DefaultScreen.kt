@@ -17,33 +17,22 @@ import kotlinx.coroutines.launch
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Composable
 fun DefaultScreen(
-    footnotePositions: MutableMap<String, Float>, // Map for MarkdownText to update
+    // footnotePositions removed, no longer needed here
     scrollState: ScrollState // State to perform scroll
 ) {
-    val coroutineScope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope() // Scope for default click handler
+
     MarkdownText(
         markdown = SampleMarkdown.content,
         modifier = Modifier.fillMaxWidth().padding(8.dp), // Inner padding
-        footnotePositions = footnotePositions, // Pass map
+        scrollState = scrollState, // Pass ScrollState
+        coroutineScope = coroutineScope, // Pass CoroutineScope
+        // footnotePositions = footnotePositions, // Removed parameter
         onLinkClick = { url ->
-            Log.d("DefaultScreen", "Link clicked: $url") // Updated Log tag
+            Log.d("DefaultScreen", "Link clicked: $url")
             // Handle link click if needed (default handler already opens browser)
-        },
-        onFootnoteReferenceClick = { identifier ->
-            Log.d("DefaultScreen", "Footnote reference clicked: [^$identifier]") // Updated Log tag
-            // --- Debug Logging ---
-            Log.d("DefaultScreen", "Current footnotePositions map: $footnotePositions") // Updated Log tag
-            val position = footnotePositions[identifier]
-            Log.d("DefaultScreen", "Position for '$identifier': $position") // Updated Log tag
-            // --- Scroll Logic ---
-            if (position != null) {
-                Log.d("DefaultScreen", "Attempting scroll to position: $position for id: $identifier") // Updated Log tag
-                coroutineScope.launch {
-                    scrollState.animateScrollTo(position.toInt()) // Scroll to the measured Y position
-                }
-            } else {
-                Log.w("DefaultScreen", "Position not found for footnote id: $identifier") // Updated Log tag
-            }
         }
+        // onFootnoteReferenceClick is omitted, using the default implementation from MarkdownText
+        // which scrolls to the bottom using the provided scrollState and coroutineScope.
     )
 }

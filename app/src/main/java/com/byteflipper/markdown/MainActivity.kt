@@ -96,7 +96,7 @@ fun MainScreen() {
             ) {
                 // Call the appropriate screen based on the selected tab
                 when (selectedTab) {
-                    0 -> DefaultScreen(footnotePositions, scrollState)
+                    0 -> DefaultScreen(scrollState)
                     1 -> CustomStyleScreen(footnotePositions, scrollState)
                     2 -> CustomRenderersScreen(footnotePositions, scrollState)
                 }

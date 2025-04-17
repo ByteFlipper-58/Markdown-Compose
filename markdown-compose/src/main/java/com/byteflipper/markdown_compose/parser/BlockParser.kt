@@ -28,6 +28,7 @@ object BlockParser {
     private val horizontalRuleRegex = Regex("""^\s*([-*_])\s*\1\s*\1+\s*$""")
     private val headerPrefixRegex = Regex("""^#{1,6}\s+.*""") // Basic check for # prefix + space
     private val footnoteDefinitionRegex = Regex("""^\s*\[\^([^\]\s]+)]:\s?(.*)""") // [^id]: text (single line)
+    private val codeBlockFenceRegex = Regex("""^\s*```(\w*)\s*$""") // Define regex needed by isStartOfBlock
 
     /**
      * Parses the input Markdown string into block-level nodes and footnote definitions.
@@ -47,13 +48,9 @@ object BlockParser {
             Log.d(TAG, "Processing line $i: \"$line\"")
 
             if (line.isBlank()) {
-                // Handle blank lines (only add LineBreakElement if needed)
-                if (elements.isNotEmpty() && elements.lastOrNull() !is LineBreakElement) { // Changed to LineBreakElement
-                    elements.add(LineBreakElement) // Changed to LineBreakElement
-                    Log.d(TAG, "Added LineBreakElement for blank line $i.")
-                } else {
-                    Log.v(TAG, "Skipping redundant blank line $i.")
-                }
+                // Blank lines are just separators between blocks.
+                // Don't add LineBreakElement here; spacing should be handled by block renderers (e.g., paragraph padding).
+                Log.v(TAG, "Skipping blank line $i (block separator).")
                 i++
                 continue
             }
@@ -136,9 +133,9 @@ object BlockParser {
             // 7. Horizontal Rule Check (Single line)
             val horizontalRuleElement = parseHorizontalRule(line) // Returns HorizontalRuleElement?
             if (horizontalRuleElement != null) {
-                if (elements.lastOrNull() is LineBreakElement) { // Check for LineBreakElement
+                if (elements.isNotEmpty() && elements.last() is LineBreakElement) { // Check for LineBreakElement safely
                     Log.d(TAG, "Removing preceding LineBreakElement before HR.")
-                    elements.removeLast()
+                    elements.removeAt(elements.lastIndex) // Use removeAt for compatibility
                 }
                 elements.add(horizontalRuleElement)
                 Log.d(TAG, "Parsed HorizontalRuleElement at line $i")
@@ -156,28 +153,117 @@ object BlockParser {
                 continue
             }
 
-            // 9. Default: Treat as Paragraph (use InlineParser)
-            Log.d(TAG, "Treating line $i as paragraph/inline content.")
-            val inlineElements = InlineParser.parseInline(line) // Returns List<MarkdownElement>
-            if (inlineElements.isNotEmpty()) {
-                elements.addAll(inlineElements) // Add all parsed inline elements
-            } else if (line.isNotEmpty()) {
-                // Handle cases where InlineParser might return empty for non-empty input (e.g., only whitespace?)
-                Log.w(TAG, "InlineParser returned empty list for non-empty line: \"$line\". Adding as MarkdownTextElement.")
-                elements.add(MarkdownTextElement(line)) // Changed to MarkdownTextElement
+            // 9. Default: Treat as Paragraph
+            // Collect consecutive lines that are not blank and don't start another block type.
+            Log.d(TAG, "Potential paragraph start at line $i: \"$line\"")
+            val paragraphLines = mutableListOf<String>()
+            var paragraphEndIndex = i
+            while (paragraphEndIndex < lines.size) {
+                val currentLine = lines[paragraphEndIndex]
+                if (currentLine.isBlank() || isStartOfBlock(currentLine, lines, paragraphEndIndex)) {
+                    // Paragraph ends here (blank line or start of new block)
+                    Log.v(TAG, "Paragraph ends before line $paragraphEndIndex.")
+                    break
+                }
+                paragraphLines.add(currentLine.trim()) // Add trimmed line to paragraph
+                paragraphEndIndex++
             }
-            i++ // Consume one line
+
+            if (paragraphLines.isNotEmpty()) {
+                // Join lines with spaces (Markdown standard for line breaks within paragraphs)
+                val paragraphText = paragraphLines.joinToString(" ")
+                Log.d(TAG, "Parsing paragraph content (lines $i-${paragraphEndIndex - 1}): \"$paragraphText\"")
+                val inlineElements = InlineParser.parseInline(paragraphText) // Parse the whole paragraph
+
+                if (inlineElements.isNotEmpty()) {
+                    elements.add(ParagraphElement(children = inlineElements)) // Add as ParagraphElement
+                    Log.d(TAG, "Added ParagraphElement consuming lines $i to ${paragraphEndIndex - 1}")
+                } else {
+                    // Handle cases where joined paragraph text results in no inline elements (e.g., only whitespace after joining?)
+                    Log.w(TAG, "Joined paragraph text resulted in empty inline elements: \"$paragraphText\"")
+                }
+                consumedLines = paragraphEndIndex - i // Update consumed lines count
+            } else {
+                // Should not happen if the initial line wasn't blank, but handle defensively
+                Log.w(TAG, "Detected paragraph start at line $i but collected no lines.")
+                consumedLines = 1 // Consume just the one line
+            }
+
+            i += consumedLines // Advance main loop index
+
         } // End while loop
 
-        // Remove trailing blank line element if present
-        if (elements.lastOrNull() is LineBreakElement) { // Check for LineBreakElement
+        // Remove trailing blank line element if present (This check might be redundant now)
+        if (elements.isNotEmpty() && elements.last() is LineBreakElement) { // Check for LineBreakElement safely
             Log.d(TAG,"Removing trailing LineBreakElement.")
-            elements.removeLast()
+            elements.removeAt(elements.lastIndex) // Use removeAt for compatibility
         }
 
         Log.d(TAG, "--- Finished parseBlocks (IR). Elements: ${elements.size}, Definitions: ${definitions.size} ---")
         return BlockParseResult(elements.toList(), definitions.toMap()) // Return IR result
     }
+
+    /**
+     * Helper function to check if a line indicates the start of a known block type
+     * (excluding paragraph, which is the fallback).
+     * This is used to determine where a paragraph ends.
+     *
+     * @param line The line to check.
+     * @param allLines All lines of the input (needed for context checks like tables).
+     * @param index The index of the current line in allLines.
+     * @return True if the line starts a known block type, false otherwise.
+     */
+    private fun isStartOfBlock(line: String, allLines: List<String>, index: Int): Boolean {
+        // Order matters - check potentially ambiguous or multi-line blocks first
+
+        // 1. Table Check (Replicate logic from TableParser.tryParseTable start)
+        val nextLine = allLines.getOrNull(index + 1)?.trim()
+        if (nextLine != null) {
+            val headerLine = line.trim() // Current line is potential header
+            val separatorLine = nextLine
+            // Use the regex defined in the object scope
+            val isPotentialTable = headerLine.contains("|") &&
+                    separatorLine.contains("|") &&
+                    separatorLine.contains("-") &&
+                    separatorLine.all { it == '|' || it == '-' || it == ':' || it.isWhitespace() } &&
+                    !codeBlockFenceRegex.matches(headerLine) &&
+                    !codeBlockFenceRegex.matches(separatorLine)
+
+            if (isPotentialTable) {
+                Log.v(TAG, "isStartOfBlock: Detected potential table start at line $index")
+                return true
+            }
+        }
+
+        // 2. Other block checks
+        if (codeBlockParser.isStartOfCodeBlock(line)) return true
+        if (footnoteDefinitionRegex.matches(line)) return true
+        if (listParser.isStartOfListItem(line)) return true
+        if (headerPrefixRegex.matches(line)) return true // Header check needs refinement if '#' can be paragraph start
+        if (line.startsWith("> ")) return true // Block quote
+        if (horizontalRuleRegex.matches(line)) return true
+        if (isStartOfDefinitionList(allLines, index)) return true // Check definition list
+
+        // Add checks for other block types here if they are introduced
+
+        return false // If none of the above match, it's likely part of a paragraph
+    }
+
+    /**
+     * Helper to check specifically for the start of a definition list,
+     * used by isStartOfBlock. Avoids parsing the whole list just for the check.
+     */
+    private fun isStartOfDefinitionList(lines: List<String>, startIndex: Int): Boolean {
+        val termLine = lines.getOrNull(startIndex) ?: return false
+        val detailsLine = lines.getOrNull(startIndex + 1) ?: return false
+
+        // Basic check: Term line is not blank/block marker, next line starts with ':'
+        val isTermLike = !termLine.isBlank() && !termLine.startsWith(listOf(">", "#", "-", "*", "+", "1.", "```", "|", "[^", "    ", "\t"))
+        val isDetailsLike = detailsLine.trimStart().startsWith(':')
+
+        return isTermLike && isDetailsLike
+    }
+
 
     /**
      * Attempts to parse a definition list starting at the given index.

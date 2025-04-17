@@ -25,86 +25,11 @@ import androidx.compose.ui.unit.dp
 import com.byteflipper.markdown.SampleMarkdown // Import SampleMarkdown
 import com.byteflipper.markdown_compose.MarkdownText
 import com.byteflipper.markdown_compose.model.*
+import com.byteflipper.markdown_compose.model.defaultMarkdownStyleSheet // <<< ДОБАВЛЕН ИМПОРТ
 import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
 import kotlinx.coroutines.launch
 
-// --- Custom Renderers Example ---
-@Composable
-private fun createCustomRenderers(): MarkdownRenderers {
-    val defaultRenderers = defaultMarkdownRenderers()
-    val defaultStyleSheet = defaultMarkdownStyleSheet() // Need styles for default parts
-
-    return defaultRenderers.copy(
-        // Example: Add an emoji before H1 headers
-        renderHeader = { node, styleSheet, modifier -> {
-            val defaultStyle = when (node.level) {
-                1 -> styleSheet.headerStyle.h1
-                2 -> styleSheet.headerStyle.h2
-                3 -> styleSheet.headerStyle.h3
-                4 -> styleSheet.headerStyle.h4
-                5 -> styleSheet.headerStyle.h5
-                else -> styleSheet.headerStyle.h6
-            }
-            val prefix = if (node.level == 1) "🚀 " else ""
-            val content = MarkdownRenderer.render(node.content, styleSheet, null) // Render content
-            Text(
-                text = buildAnnotatedString {
-                    append(prefix)
-                    append(content)
-                },
-                style = defaultStyle,
-                modifier = modifier.padding(bottom = styleSheet.headerStyle.bottomPadding)
-            )
-        }},
-
-        // Example: Customize BlockQuote with an icon and different background
-        renderBlockQuote = { node, styleSheet, modifier, footnoteMap, linkHandler, footnoteClickHandler -> {
-            val content = MarkdownRenderer.render(node.content, styleSheet, footnoteMap)
-            val quoteColor = MaterialTheme.colorScheme.primary
-            val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-
-            Row(
-                modifier = modifier
-                    .drawBehind { // Draw the vertical bar
-                        val barWidthPx = styleSheet.blockQuoteStyle.verticalBarWidth.toPx()
-                        drawLine(
-                            color = quoteColor,
-                            start = Offset(barWidthPx / 2f, 0f),
-                            end = Offset(barWidthPx / 2f, size.height),
-                            strokeWidth = barWidthPx,
-                            cap = StrokeCap.Square
-                        )
-                    }
-                    .background(backgroundColor)
-                    .padding(
-                        start = styleSheet.blockQuoteStyle.verticalBarWidth + styleSheet.blockQuoteStyle.padding, // Padding after bar
-                        top = styleSheet.blockQuoteStyle.padding,
-                        end = styleSheet.blockQuoteStyle.padding,
-                        bottom = styleSheet.blockQuoteStyle.padding
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = "Quote",
-                    tint = quoteColor,
-                    modifier = Modifier.size(18.dp).padding(end = 8.dp).align(Alignment.Top)
-                )
-                // Use ClickableText for the content to handle links/footnotes inside quote
-                ClickableText(
-                    text = content,
-                    style = styleSheet.textStyle.merge(LocalTextStyle.current), // Use base text style
-                    onClick = { offset ->
-                        content.getStringAnnotations(com.byteflipper.markdown_compose.renderer.builders.Link.URL_TAG, offset, offset).firstOrNull()
-                            ?.let { linkHandler(it.item); return@ClickableText }
-                        content.getStringAnnotations(com.byteflipper.markdown_compose.renderer.FOOTNOTE_REF_TAG, offset, offset).firstOrNull()
-                            ?.let { footnoteClickHandler?.invoke(it.item) }
-                    }
-                )
-            }
-        }}
-        // Keep other renderers as default
-    )
-}
+// Removed createCustomRenderers function
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Composable
@@ -113,13 +38,13 @@ fun CustomRenderersScreen(
     scrollState: ScrollState
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val customRenderers = createCustomRenderers() // Get the custom renderers
+    // Removed customRenderers definition
 
     MarkdownText(
         markdown = SampleMarkdown.content,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         footnotePositions = footnotePositions,
-        renderers = customRenderers, // Pass the custom renderers
+        // renderers = customRenderers, // Removed custom renderers parameter
         // Use default stylesheet or a custom one if needed
         styleSheet = defaultMarkdownStyleSheet(),
         onLinkClick = { url ->
@@ -140,6 +65,7 @@ fun CustomRenderersScreen(
             } else {
                 Log.w("CustomRenderersScreen", "Position not found for footnote id: $identifier") // Updated Log tag
             }
-        }
+        },
+        scrollState = scrollState
     )
 }

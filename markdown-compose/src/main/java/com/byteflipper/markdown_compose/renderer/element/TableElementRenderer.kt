@@ -1,12 +1,10 @@
-package com.byteflipper.markdown_compose.renderer.builders
+package com.byteflipper.markdown_compose.renderer.element
 
 import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -22,14 +20,25 @@ import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.dp
-import com.byteflipper.markdown_compose.model.*
-import com.byteflipper.markdown_compose.renderer.FOOTNOTE_REF_TAG // Import footnote tag
-import com.byteflipper.markdown_compose.renderer.MarkdownRenderer
+import com.byteflipper.markdown_compose.model.MarkdownStyleSheet
+import com.byteflipper.markdown_compose.model.ir.*
+import com.byteflipper.markdown_compose.renderer.ComposeMarkdownRenderer
+import com.byteflipper.markdown_compose.renderer.util.AnnotatedStringRenderUtil // Import the util
 
-private const val TAG = "TableRendererCanvas"
+/**
+ * Renders a table element using Canvas.
+ */
+internal object TableElementRenderer {
 
-object Table {
+    // Re-define constants or import if needed
+    private const val URL_TAG = "URL"
+    private const val FOOTNOTE_REF_TAG = "FOOTNOTE_REF" // Define a consistent tag
+
+    private data class CellRenderData(
+        val annotatedString: AnnotatedString,
+        val textLayoutResult: TextLayoutResult,
+        val isHeader: Boolean
+    )
 
     private data class CellLayoutInfo(
         val bounds: Rect,
@@ -37,26 +46,33 @@ object Table {
         val textTopLeft: Offset
     )
 
-    /**
-     * Renders a Markdown table using Canvas, including support for footnotes within cells.
-     *
-     * @param tableNode The TableNode data.
-     * @param styleSheet The stylesheet.
-     * @param modifier Modifier for layout adjustments.
-     * @param footnoteReferenceMap Map from footnote ID to its display index for correct rendering.
-     * @param linkHandler Callback for external link clicks.
-     * @param onFootnoteReferenceClick Callback for footnote reference clicks.
-     */
+    // Removed @Composable annotation
+    fun render(
+        renderer: ComposeMarkdownRenderer,
+        element: TableElement
+    ): @Composable () -> Unit = {
+        RenderTableInternal(
+            renderer = renderer,
+            tableNode = element,
+            styleSheet = renderer.styleSheet,
+            modifier = Modifier, // Apply modifier from renderer instance?
+            footnoteReferenceMap = renderer.footnoteDefinitions.mapValues { renderer.footnoteDefinitions.keys.indexOf(it.key) + 1 },
+            linkHandler = { url -> renderer.onLinkClick?.invoke(url) },
+            onFootnoteReferenceClick = { id -> renderer.onFootnoteReferenceClick?.invoke(id) }
+        )
+    }
+
     @Composable
-    fun RenderTable(
-        tableNode: TableNode,
+    private fun RenderTableInternal(
+        renderer: ComposeMarkdownRenderer, // Pass the main renderer instance
+        tableNode: TableElement,
         styleSheet: MarkdownStyleSheet,
         modifier: Modifier = Modifier,
-        footnoteReferenceMap: Map<String, Int>?, // Receive the map
+        footnoteReferenceMap: Map<String, Int>?,
         linkHandler: (url: String) -> Unit,
-        onFootnoteReferenceClick: ((identifier: String) -> Unit)? // Receive the callback
+        onFootnoteReferenceClick: ((identifier: String) -> Unit)?
     ) {
-        Log.d(TAG, "Start rendering table with style: ${styleSheet.tableStyle}")
+        Log.d("TableElementRenderer", "Start rendering table with style: ${styleSheet.tableStyle}")
 
         val textMeasurer: TextMeasurer = rememberTextMeasurer()
         val density = LocalDensity.current
@@ -65,12 +81,10 @@ object Table {
         val cellPaddingPx = with(density) { tableStyle.cellPadding.toPx() }
         val borderThicknessPx = with(density) { tableStyle.borderThickness.toPx().coerceAtLeast(0.1f) }
 
-        // Pre-measure content, passing the footnote map
         val (rowHeightsPx, columnWidthsPx, cellRenderData) = remember(tableNode, styleSheet, textMeasurer, cellPaddingPx, density, footnoteReferenceMap) {
-            measureTableContent(tableNode, styleSheet, textMeasurer, cellPaddingPx, footnoteReferenceMap) // Pass the map
+            measureTableContent(renderer, tableNode, styleSheet, textMeasurer, cellPaddingPx, footnoteReferenceMap)
         }
 
-        // Calculate dimensions with padding
         val paddedRowHeightsPx = rowHeightsPx.map { it + (2 * cellPaddingPx) }
         val paddedColumnWidthsPx = columnWidthsPx.map { it + (2 * cellPaddingPx) }
         val totalUnscaledPaddedWidth = paddedColumnWidthsPx.sum()
@@ -83,33 +97,31 @@ object Table {
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(tableNode, cellLayoutInfosState.value, linkHandler, onFootnoteReferenceClick) { // Add callback to key
+                        .pointerInput(tableNode, cellLayoutInfosState.value, linkHandler, onFootnoteReferenceClick) {
                             detectTapGestures(
                                 onTap = { tapOffset ->
                                     handleTap(
                                         tapOffset = tapOffset,
                                         cellLayoutInfos = cellLayoutInfosState.value,
                                         linkHandler = linkHandler,
-                                        onFootnoteReferenceClick = onFootnoteReferenceClick // Pass callback
+                                        onFootnoteReferenceClick = onFootnoteReferenceClick
                                     )
                                 }
                             )
                         }
                 ) {
-                    // Calculations for scaling
                     val layoutWidth = size.width
                     val layoutHeight = size.height
                     val scale = if (totalUnscaledPaddedWidth > 0f) layoutWidth / totalUnscaledPaddedWidth else 1f
 
                     val scaledPaddedColumnWidths = paddedColumnWidthsPx.map { it * scale }
                     val scaledPaddedRowHeights = paddedRowHeightsPx.map { it * scale }
-                    val scaledBorderThickness = borderThicknessPx // Keep border unscaled
+                    val scaledBorderThickness = borderThicknessPx
                     val scaledCellPadding = cellPaddingPx * scale
 
                     val totalGridWidth = scaledPaddedColumnWidths.sum()
                     val totalGridHeight = scaledPaddedRowHeights.sum().coerceAtMost(layoutHeight)
 
-                    // --- Draw Table and Capture Layout Info ---
                     val currentCellLayoutInfos = mutableListOf<CellLayoutInfo>()
 
                     val drawAndCapture: DrawScope.() -> Unit = {
@@ -126,66 +138,47 @@ object Table {
                         )
                     }
 
-                    // --- Drawing Logic with optional clipping ---
                     val outlineShape = tableStyle.outerBorderShape
                     val outlinePath = if (outlineShape != null) {
                         Path().apply { addOutline(outlineShape.createOutline(Size(totalGridWidth, totalGridHeight), layoutDirection, density)) }
                     } else null
 
                     if (outlinePath != null) {
-                        clipPath(outlinePath, clipOp = ClipOp.Intersect) {
-                            drawAndCapture()
-                        }
-                        if (scaledBorderThickness > 0) {
-                            drawPath(path = outlinePath, color = tableStyle.borderColor, style = Stroke(width = scaledBorderThickness))
-                        }
+                        clipPath(outlinePath, clipOp = ClipOp.Intersect) { drawAndCapture() }
+                        if (scaledBorderThickness > 0) drawPath(path = outlinePath, color = tableStyle.borderColor, style = Stroke(width = scaledBorderThickness))
                     } else {
                         drawAndCapture()
-                        if (scaledBorderThickness > 0) {
-                            drawRect(color = tableStyle.borderColor, topLeft = Offset.Zero, size = Size(totalGridWidth, totalGridHeight), style = Stroke(width = scaledBorderThickness))
-                        }
+                        if (scaledBorderThickness > 0) drawRect(color = tableStyle.borderColor, topLeft = Offset.Zero, size = Size(totalGridWidth, totalGridHeight), style = Stroke(width = scaledBorderThickness))
                     }
 
-                    // --- Update state after drawing ---
                     if (cellLayoutInfosState.value != currentCellLayoutInfos) {
                         cellLayoutInfosState.value = currentCellLayoutInfos.toList()
-                        Log.d(TAG, "Updated CellLayoutInfo state with ${currentCellLayoutInfos.size} cells")
+                        Log.d("TableElementRenderer", "Updated CellLayoutInfo state with ${currentCellLayoutInfos.size} cells")
                     }
                 }
             },
             modifier = modifier,
             measurePolicy = { measurables, constraints ->
-                // --- Measure Policy ---
                 val requiredWidth = totalUnscaledPaddedWidth.coerceAtLeast(0f)
                 val finalWidth = requiredWidth.coerceIn(constraints.minWidth.toFloat(), constraints.maxWidth.toFloat())
                 val scale = if (totalUnscaledPaddedWidth > 0f) finalWidth / totalUnscaledPaddedWidth else 1f
                 val requiredHeight = (totalUnscaledPaddedHeight * scale).coerceAtLeast(0f)
                 val finalHeight = requiredHeight.coerceIn(constraints.minHeight.toFloat(), constraints.maxHeight.toFloat())
 
-                val placeable = measurables.first().measure(
-                    Constraints.fixed(finalWidth.toInt(), finalHeight.toInt())
-                )
-                Log.d(TAG, "Layout - Constraints: $constraints, Required W/H: $requiredWidth/$requiredHeight, Final W/H: ${finalWidth.toInt()}/${finalHeight.toInt()}")
-                layout(finalWidth.toInt(), finalHeight.toInt()) {
-                    placeable.placeRelative(0, 0)
-                }
+                val placeable = measurables.first().measure(Constraints.fixed(finalWidth.toInt(), finalHeight.toInt()))
+                Log.d("TableElementRenderer", "Layout - Constraints: $constraints, Required W/H: $requiredWidth/$requiredHeight, Final W/H: ${finalWidth.toInt()}/${finalHeight.toInt()}")
+                layout(finalWidth.toInt(), finalHeight.toInt()) { placeable.placeRelative(0, 0) }
             }
         )
     }
 
-    private data class CellRenderData(
-        val annotatedString: AnnotatedString,
-        val textLayoutResult: TextLayoutResult,
-        val isHeader: Boolean
-    )
-
-    /** Measures cell content, now including footnote map. */
     private fun measureTableContent(
-        tableNode: TableNode,
+        renderer: ComposeMarkdownRenderer, // Pass renderer
+        tableNode: TableElement,
         styleSheet: MarkdownStyleSheet,
         textMeasurer: TextMeasurer,
         cellPaddingPx: Float,
-        footnoteReferenceMap: Map<String, Int>? // Receive the map
+        footnoteReferenceMap: Map<String, Int>?
     ): Triple<List<Float>, List<Float>, Map<Pair<Int, Int>, CellRenderData>> {
         val cellDataMap = mutableMapOf<Pair<Int, Int>, CellRenderData>()
         val rowHeightsPx = mutableListOf<Float>()
@@ -197,40 +190,33 @@ object Table {
             val isHeaderRow = row.isHeader
             val baseTextStyle = styleSheet.textStyle
             val cellTextStyle = if (isHeaderRow) baseTextStyle.copy(fontWeight = FontWeight.Bold) else baseTextStyle
-            // Create a stylesheet specific for this row's style (header or normal)
-            // This ensures nodes *inside* the cell inherit the correct base style
-            val rowStyleSheet = styleSheet.copy(textStyle = cellTextStyle)
 
             for (colIndex in 0 until actualColumnCount) {
-                val cellNode = row.cells.getOrNull(colIndex)
+                val cellElement = row.cells.getOrNull(colIndex)
                 val cellKey = Pair(rowIndex, colIndex)
 
-                // Render cell content WITH footnote map
-                val annotatedString = if (cellNode != null) {
-                    // Use the row-specific stylesheet and pass the footnote map
-                    MarkdownRenderer.render(cellNode.content, rowStyleSheet, footnoteReferenceMap)
-                } else {
-                    AnnotatedString("")
+                val annotatedString = buildAnnotatedString {
+                    if (cellElement != null) {
+                        // Use the utility function
+                        AnnotatedStringRenderUtil.renderChildren(renderer, this, cellElement.children)
+                    }
                 }
 
-                // Measure the final AnnotatedString
-                val textLayoutResult = textMeasurer.measure(annotatedString)
+                val textLayoutResult = textMeasurer.measure(annotatedString, cellTextStyle)
                 cellDataMap[cellKey] = CellRenderData(annotatedString, textLayoutResult, isHeaderRow)
 
-                // Update dimensions based on measurement
                 val textHeight = textLayoutResult.size.height.toFloat()
                 val textWidth = textLayoutResult.size.width.toFloat()
                 maxRowHeight = maxOf(maxRowHeight, textHeight)
                 columnWidthsPx[colIndex] = maxOf(columnWidthsPx[colIndex], textWidth)
             }
-            rowHeightsPx.add(maxRowHeight) // Store height *without* padding
+            rowHeightsPx.add(maxRowHeight)
         }
         return Triple(rowHeightsPx.toList(), columnWidthsPx.toList(), cellDataMap.toMap())
     }
 
-    /** Draws the grid lines and cell content. */
     private fun DrawScope.drawGridAndContent(
-        tableNode: TableNode,
+        tableNode: TableElement,
         cellRenderData: Map<Pair<Int, Int>, CellRenderData>,
         scaledPaddedColumnWidths: List<Float>,
         scaledPaddedRowHeights: List<Float>,
@@ -238,23 +224,19 @@ object Table {
         borderThickness: Float,
         borderColor: Color,
         columnAlignments: List<ColumnAlignment>,
-        captureLayoutInfoList: MutableList<CellLayoutInfo> // List to capture layout info
+        captureLayoutInfoList: MutableList<CellLayoutInfo>
     ) {
-        captureLayoutInfoList.clear() // Clear before populating
-
+        captureLayoutInfoList.clear()
         val totalGridHeight = scaledPaddedRowHeights.sum().coerceAtMost(size.height)
         val totalGridWidth = scaledPaddedColumnWidths.sum().coerceAtMost(size.width)
 
-        // --- Draw Grid Lines ---
         var yPos = 0f
         if (borderThickness > 0) {
-            // Draw horizontal lines
             scaledPaddedRowHeights.dropLast(1).forEach { rowHeight ->
                 yPos += rowHeight
                 val currentY = yPos.coerceAtMost(totalGridHeight)
                 drawLine(color = borderColor, start = Offset(0f, currentY), end = Offset(totalGridWidth, currentY), strokeWidth = borderThickness)
             }
-            // Draw vertical lines
             var xPos = 0f
             scaledPaddedColumnWidths.dropLast(1).forEach { colWidth ->
                 xPos += colWidth
@@ -263,132 +245,82 @@ object Table {
             }
         }
 
-        // --- Draw Cell Contents and Capture Info ---
         var currentY = 0f
         tableNode.rows.forEachIndexed { rowIndex, row ->
             var currentX = 0f
             val scaledCurrentRowHeight = scaledPaddedRowHeights.getOrElse(rowIndex) { 0f }
-
             for (columnIndex in 0 until scaledPaddedColumnWidths.size) {
                 val cellKey = Pair(rowIndex, columnIndex)
                 val data = cellRenderData[cellKey]
-                val scaledCellWidth = scaledPaddedColumnWidths.getOrElse(columnIndex) { 0f } // Use getOrElse
-
+                val scaledCellWidth = scaledPaddedColumnWidths.getOrElse(columnIndex) { 0f }
                 if (data != null) {
                     val textLayoutResult = data.textLayoutResult
                     val alignment = columnAlignments.getOrElse(columnIndex) { ColumnAlignment.LEFT }
                     val textWidth = textLayoutResult.size.width.toFloat()
                     val textHeight = textLayoutResult.size.height.toFloat()
-
-                    // Calculate text position based on alignment and padding
                     val textOffsetX = when (alignment) {
                         ColumnAlignment.LEFT -> currentX + scaledCellPadding
                         ColumnAlignment.RIGHT -> currentX + scaledCellWidth - scaledCellPadding - textWidth
                         ColumnAlignment.CENTER -> currentX + (scaledCellWidth - textWidth) / 2f
-                    }.coerceIn(currentX, currentX + scaledCellWidth - textWidth) // Ensure text doesn't overflow cell bounds horizontally
-
-                    // Calculate vertical center position
+                    }.coerceIn(currentX, currentX + scaledCellWidth - textWidth)
                     val verticalCenterOffset = (scaledCurrentRowHeight - textHeight) / 2f
-                    val textOffsetY = (currentY + verticalCenterOffset)
-                         // Ensure text doesn't overflow cell bounds vertically
-                        .coerceIn(currentY, currentY + scaledCurrentRowHeight - textHeight.coerceAtLeast(0f)) // Ensure textHeight is not negative
-
-                    // Add detailed logging for vertical alignment calculation
-                    Log.v(TAG, "Cell($rowIndex, $columnIndex): currentY=$currentY, rowH=$scaledCurrentRowHeight, textH=$textHeight, centerOffset=$verticalCenterOffset, finalOffsetY=$textOffsetY")
-
+                    val textOffsetY = (currentY + verticalCenterOffset).coerceIn(currentY, currentY + scaledCurrentRowHeight - textHeight.coerceAtLeast(0f))
                     val textDrawOffset = Offset(textOffsetX, textOffsetY)
-
-                    // Draw the text
                     drawText(textLayoutResult = textLayoutResult, topLeft = textDrawOffset)
-
-                    // --- Capture Layout Info ---
-                    val cellBounds = Rect(
-                        left = currentX,
-                        top = currentY,
-                        right = currentX + scaledCellWidth,
-                        bottom = currentY + scaledCurrentRowHeight
-                    )
-                    captureLayoutInfoList.add(
-                        CellLayoutInfo(
-                            bounds = cellBounds,
-                            textLayoutResult = textLayoutResult,
-                            textTopLeft = textDrawOffset // Store the actual draw position
-                        )
-                    )
-                    // --- End Capture ---
-
+                    val cellBounds = Rect(left = currentX, top = currentY, right = currentX + scaledCellWidth, bottom = currentY + scaledCurrentRowHeight)
+                    captureLayoutInfoList.add(CellLayoutInfo(bounds = cellBounds, textLayoutResult = textLayoutResult, textTopLeft = textDrawOffset))
                 } else {
-                    // Still advance X even if cell data is missing, to keep grid aligned
-                    Log.w(TAG, "No render data found for cell ($rowIndex, $columnIndex)")
+                    Log.w("TableElementRenderer", "No render data found for cell ($rowIndex, $columnIndex)")
                 }
-                currentX += scaledCellWidth // Move to next column start
-            } // End column loop
-            currentY += scaledCurrentRowHeight // Move to next row start
-        } // End row loop
-        Log.v(TAG, "Captured layout info for ${captureLayoutInfoList.size} cells")
+                currentX += scaledCellWidth
+            }
+            currentY += scaledCurrentRowHeight
+        }
+        Log.v("TableElementRenderer", "Captured layout info for ${captureLayoutInfoList.size} cells")
     }
 
-
-    /** Handles tap gestures, now checking for both link and footnote annotations. */
     private fun handleTap(
         tapOffset: Offset,
         cellLayoutInfos: List<CellLayoutInfo>,
         linkHandler: (url: String) -> Unit,
-        onFootnoteReferenceClick: ((identifier: String) -> Unit)? // Receive callback
+        onFootnoteReferenceClick: ((identifier: String) -> Unit)?
     ) {
-        Log.d(TAG, "Tap detected at: $tapOffset. Checking ${cellLayoutInfos.size} cells.")
+        Log.d("TableElementRenderer", "Tap detected at: $tapOffset. Checking ${cellLayoutInfos.size} cells.")
         val tappedCellInfo = cellLayoutInfos.find { tapOffset in it.bounds }
-
         if (tappedCellInfo != null) {
-            Log.d(TAG, "Tap inside cell bounds: ${tappedCellInfo.bounds}")
-            // Calculate offset relative to the text's actual drawn top-left corner
+            Log.d("TableElementRenderer", "Tap inside cell bounds: ${tappedCellInfo.bounds}")
             val textRelativeOffset = tapOffset - tappedCellInfo.textTopLeft
-
-            // Check if the tap is within the measured text dimensions
             if (textRelativeOffset.x >= 0 && textRelativeOffset.y >= 0 &&
                 textRelativeOffset.x <= tappedCellInfo.textLayoutResult.size.width &&
                 textRelativeOffset.y <= tappedCellInfo.textLayoutResult.size.height) {
-                val characterOffset = try {
-                    tappedCellInfo.textLayoutResult.getOffsetForPosition(textRelativeOffset)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error getting offset for position: $textRelativeOffset in cell: ${tappedCellInfo.bounds}", e)
-                    -1 // Indicate error or offset outside valid range
-                }
-
+                val characterOffset = try { tappedCellInfo.textLayoutResult.getOffsetForPosition(textRelativeOffset) } catch (e: Exception) { -1 }
                 if (characterOffset >= 0) {
-                    Log.d(TAG, "Tap maps to character offset: $characterOffset")
-                    val text = tappedCellInfo.textLayoutResult.layoutInput.text // Get the AnnotatedString
-
-                    // Check for Link annotation first
-                    text.getStringAnnotations(tag = Link.URL_TAG, start = characterOffset, end = characterOffset)
-                        .firstOrNull()?.let { annotation ->
-                            Log.i(TAG, "Link clicked in Table (Canvas): ${annotation.item}")
-                            linkHandler(annotation.item)
-                            return // Handled link
-                        }
-
-                    // If no link found, check for Footnote annotation
-                    text.getStringAnnotations(tag = FOOTNOTE_REF_TAG, start = characterOffset, end = characterOffset)
-                        .firstOrNull()?.let { annotation ->
-                            Log.i(TAG, "Footnote ref [^${annotation.item}] clicked in Table (Canvas)")
-                            onFootnoteReferenceClick?.invoke(annotation.item) // Call the footnote callback
-                            return // Handled footnote
-                        }
-
-                    Log.d(TAG, "No link or footnote annotation found at offset $characterOffset")
+                    Log.d("TableElementRenderer", "Tap maps to character offset: $characterOffset")
+                    val text = tappedCellInfo.textLayoutResult.layoutInput.text
+                    text.getStringAnnotations(tag = URL_TAG, start = characterOffset, end = characterOffset).firstOrNull()?.let {
+                        Log.i("TableElementRenderer", "Link clicked in Table (Canvas): ${it.item}")
+                        linkHandler(it.item)
+                        return
+                    }
+                    text.getStringAnnotations(tag = FOOTNOTE_REF_TAG, start = characterOffset, end = characterOffset).firstOrNull()?.let {
+                        Log.i("TableElementRenderer", "Footnote ref [^${it.item}] clicked in Table (Canvas)")
+                        onFootnoteReferenceClick?.invoke(it.item)
+                        return
+                    }
+                    Log.d("TableElementRenderer", "No link or footnote annotation found at offset $characterOffset")
                 } else {
-                    Log.w(TAG, "Tap was within text layout, but getOffsetForPosition returned invalid offset for relative: $textRelativeOffset")
+                    Log.w("TableElementRenderer", "Tap was within text layout, but getOffsetForPosition returned invalid offset for relative: $textRelativeOffset")
                 }
             } else {
-                Log.d(TAG, "Tap inside cell bounds, but outside text layout area. Relative offset: $textRelativeOffset")
+                Log.d("TableElementRenderer", "Tap inside cell bounds, but outside text layout area. Relative offset: $textRelativeOffset")
             }
         } else {
-            Log.d(TAG, "Tap outside any cell bounds.")
+            Log.d("TableElementRenderer", "Tap outside any cell bounds.")
         }
     }
 
-    // Helper extension for checking if offset is within Rect bounds
-    private operator fun Rect.contains(offset: Offset): Boolean {
-        return offset.x >= left && offset.x < right && offset.y >= top && offset.y < bottom
-    }
+    // Helper extension (duplicate - consider extracting)
+    private operator fun Rect.contains(offset: Offset): Boolean = offset.x >= left && offset.x < right && offset.y >= top && offset.y < bottom
+
+    // renderChildrenToAnnotatedString was already removed correctly here.
 }

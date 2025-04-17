@@ -86,47 +86,15 @@ interface MarkdownRenderer<T> {
     /** Renders a definition details element. */
     fun renderDefinitionDetails(definitionDetails: DefinitionDetailsElement): T // Might be handled within renderDefinitionList
 
-    // --- Helper or Generic Rendering Method ---
+    /** Renders a definition item element (term + details). */
+    fun renderDefinitionItem(definitionItem: DefinitionItemElement): T // Might be handled within renderDefinitionList
 
-    /**
-     * Generic method to render a list of child elements.
-     * This is often used internally by render methods for container elements
-     * (like Bold, Italic, ListItem, etc.).
-     * The exact return type might vary based on the implementation (e.g., List<T>, Unit).
-     */
-    fun renderChildren(children: List<MarkdownElement>) // Return type depends on T and implementation
+    // --- Helper or Generic Rendering Method ---
+    // renderChildren removed from interface - it's an implementation detail.
 
     /**
      * Generic method to render a single element. Can be used for dispatching.
+     * Implementations must provide their own dispatch logic.
      */
-    fun renderElement(element: MarkdownElement): T {
-        return when (element) {
-            is MarkdownDocument -> renderDocument(element)
-            is HeaderElement -> renderHeader(element)
-            is MarkdownTextElement -> renderText(element)
-            is BoldElement -> renderBold(element)
-            is ItalicElement -> renderItalic(element)
-            is StrikethroughElement -> renderStrikethrough(element)
-            is CodeElement -> renderCode(element)
-            is LinkElement -> renderLink(element)
-            is ImageElement -> renderImage(element)
-            is ImageLinkElement -> renderImageLink(element)
-            is BlockQuoteElement -> renderBlockQuote(element)
-            is ListElement -> renderList(element)
-            is ListItemElement -> renderListItem(element)
-            is TaskListItemElement -> renderTaskListItem(element)
-            is TableElement -> renderTable(element)
-            is TableRowElement -> renderTableRow(element)
-            is TableCellElement -> renderTableCell(element)
-            is HorizontalRuleElement -> renderHorizontalRule(element)
-            is LineBreakElement -> renderLineBreak(element)
-            is FootnoteReferenceElement -> renderFootnoteReference(element)
-            is FootnoteDefinitionElement -> renderFootnoteDefinition(element)
-            is DefinitionListElement -> renderDefinitionList(element)
-            is DefinitionTermElement -> renderDefinitionTerm(element)
-            is DefinitionDetailsElement -> renderDefinitionDetails(element)
-            // Add cases for any other MarkdownElement subtypes
-            else -> throw IllegalArgumentException("Unsupported MarkdownElement type: ${element::class.simpleName}")
-        }
-    }
+    fun renderElement(element: MarkdownElement): T // Removed default implementation
 }

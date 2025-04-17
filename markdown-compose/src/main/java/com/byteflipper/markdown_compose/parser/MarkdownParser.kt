@@ -37,13 +37,12 @@ object MarkdownParser {
             // For now, assume it returns the list of top-level elements.
             // val parseResult = BlockParser.parseBlocks(input) // Assuming BlockParser is updated
             // val elements = parseResult.elements
-            // val definitions = parseResult.definitions // Store or pass definitions if needed
+            val parseResult = BlockParser.parseBlocks(input) // Returns BlockParseResult
+            val elements = parseResult.elements // Extract the elements list
+            // val definitions = parseResult.definitions // Definitions are handled by the renderer
 
-            // Placeholder: Assume BlockParser returns List<MarkdownElement> directly for now
-            val elements: List<MarkdownElement> = BlockParser.parseBlocks(input) // Needs update in BlockParser
-
-            // TODO: Handle footnote definitions extracted by BlockParser if necessary for the IR structure
-            // Currently, definitions are implicitly handled by the renderer looking them up.
+            // Footnote definitions are now collected by the renderer during the renderDocument phase,
+            // so no need to add a special block here.
 
             Log.d(TAG, "Completed markdown parsing successfully. Root elements: ${elements.size}")
             MarkdownDocument(children = elements)

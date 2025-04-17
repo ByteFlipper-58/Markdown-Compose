@@ -116,7 +116,9 @@ data class TableStyle(
 @Immutable
 data class HorizontalRuleStyle(
     val color: Color,
-    val thickness: Dp = 1.dp
+    val thickness: Dp = 1.dp,
+    /** Style of the rule: "solid", "dashed", "dotted". */
+    val style: String = "solid"
 )
 
 /** Styles for [links](...). */
@@ -176,8 +178,9 @@ data class MarkdownStyleSheet(
     val footnoteBlockPadding: Dp = 16.dp,
     // --- Конец новых стилей ---
     val definitionListStyle: DefinitionListStyle, // Add style for definition lists
-    val blockSpacing: Dp = 16.dp,
-    val lineBreakSpacing: Dp = 8.dp // было 16.dp, 8 выглядит лучше для пустых строк
+    val paragraphPadding: PaddingValues, // Add padding for paragraphs
+    val blockSpacing: Dp = 16.dp, // General spacing (might be less used now)
+    val lineBreakSpacing: Dp = 8.dp // Spacing for explicit <br> or LineBreakElement
 )
 
 /**
@@ -235,7 +238,9 @@ fun defaultMarkdownStyleSheet(
     // Add default values for definition list styles
     definitionTermFontWeight: FontWeight = FontWeight.Bold,
     definitionDetailsIndent: Dp = 16.dp,
-    definitionItemSpacing: Dp = 8.dp
+    definitionItemSpacing: Dp = 8.dp,
+    // Add default parameter for paragraph padding
+    paragraphPadding: PaddingValues = PaddingValues(bottom = 8.dp) // Default bottom padding for paragraphs
 ): MarkdownStyleSheet {
     val resolvedTextColor = textStyle.color.takeOrElse { MaterialTheme.colorScheme.onSurface }
     val baseTextStyle = textStyle.copy(color = resolvedTextColor)
@@ -283,6 +288,10 @@ fun defaultMarkdownStyleSheet(
         defaultFootnoteDefinitionStyle,
         // Add definition list styles to remember keys
         defaultDefinitionTermStyle, defaultDefinitionDetailsStyle, definitionDetailsIndent, definitionItemSpacing,
+        // Add paragraph padding to remember keys
+        paragraphPadding,
+        // Add horizontal rule style to remember keys
+        dividerColor, // Already here for color/thickness, style is implicitly remembered via HorizontalRuleStyle instance
         baseTextStyle, onSurfaceVariantColor, codeTextStyle, defaultLabelSmallStyle,
         languageLabelTextStyleResolved, infoBarTextStyleResolved,
         resolvedInlineCodeStyle, defaultCheckedTaskItemTextStyle
@@ -353,7 +362,8 @@ fun defaultMarkdownStyleSheet(
             ),
             horizontalRuleStyle = HorizontalRuleStyle(
                 color = dividerColor,
-                thickness = 1.dp
+                thickness = 1.dp,
+                style = "solid" // Provide default style
             ),
             // --- Присваивание стилей сносок ---
             footnoteReferenceStyle = defaultFootnoteReferenceStyle,
@@ -369,7 +379,8 @@ fun defaultMarkdownStyleSheet(
                 itemSpacing = definitionItemSpacing
             ),
             // --- End assignment ---
-            blockSpacing = 16.dp,
+            paragraphPadding = paragraphPadding, // Assign paragraph padding
+            blockSpacing = 16.dp, // Keep blockSpacing for now, might be deprecated later
             lineBreakSpacing = 8.dp
         )
     }
