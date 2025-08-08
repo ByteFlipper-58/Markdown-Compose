@@ -72,8 +72,6 @@ internal object TableElementRenderer {
         linkHandler: (url: String) -> Unit,
         onFootnoteReferenceClick: ((identifier: String) -> Unit)?
     ) {
-        Log.d("TableElementRenderer", "Start rendering table with style: ${styleSheet.tableStyle}")
-
         val textMeasurer: TextMeasurer = rememberTextMeasurer()
         val density = LocalDensity.current
         val tableStyle = styleSheet.tableStyle
@@ -153,7 +151,6 @@ internal object TableElementRenderer {
 
                     if (cellLayoutInfosState.value != currentCellLayoutInfos) {
                         cellLayoutInfosState.value = currentCellLayoutInfos.toList()
-                        Log.d("TableElementRenderer", "Updated CellLayoutInfo state with ${currentCellLayoutInfos.size} cells")
                     }
                 }
             },
@@ -166,7 +163,6 @@ internal object TableElementRenderer {
                 val finalHeight = requiredHeight.coerceIn(constraints.minHeight.toFloat(), constraints.maxHeight.toFloat())
 
                 val placeable = measurables.first().measure(Constraints.fixed(finalWidth.toInt(), finalHeight.toInt()))
-                Log.d("TableElementRenderer", "Layout - Constraints: $constraints, Required W/H: $requiredWidth/$requiredHeight, Final W/H: ${finalWidth.toInt()}/${finalHeight.toInt()}")
                 layout(finalWidth.toInt(), finalHeight.toInt()) { placeable.placeRelative(0, 0) }
             }
         )
@@ -276,7 +272,6 @@ internal object TableElementRenderer {
             }
             currentY += scaledCurrentRowHeight
         }
-        Log.v("TableElementRenderer", "Captured layout info for ${captureLayoutInfoList.size} cells")
     }
 
     private fun handleTap(
@@ -285,37 +280,25 @@ internal object TableElementRenderer {
         linkHandler: (url: String) -> Unit,
         onFootnoteReferenceClick: ((identifier: String) -> Unit)?
     ) {
-        Log.d("TableElementRenderer", "Tap detected at: $tapOffset. Checking ${cellLayoutInfos.size} cells.")
         val tappedCellInfo = cellLayoutInfos.find { tapOffset in it.bounds }
         if (tappedCellInfo != null) {
-            Log.d("TableElementRenderer", "Tap inside cell bounds: ${tappedCellInfo.bounds}")
             val textRelativeOffset = tapOffset - tappedCellInfo.textTopLeft
             if (textRelativeOffset.x >= 0 && textRelativeOffset.y >= 0 &&
                 textRelativeOffset.x <= tappedCellInfo.textLayoutResult.size.width &&
                 textRelativeOffset.y <= tappedCellInfo.textLayoutResult.size.height) {
                 val characterOffset = try { tappedCellInfo.textLayoutResult.getOffsetForPosition(textRelativeOffset) } catch (e: Exception) { -1 }
                 if (characterOffset >= 0) {
-                    Log.d("TableElementRenderer", "Tap maps to character offset: $characterOffset")
                     val text = tappedCellInfo.textLayoutResult.layoutInput.text
                     text.getStringAnnotations(tag = URL_TAG, start = characterOffset, end = characterOffset).firstOrNull()?.let {
-                        Log.i("TableElementRenderer", "Link clicked in Table (Canvas): ${it.item}")
                         linkHandler(it.item)
                         return
                     }
                     text.getStringAnnotations(tag = FOOTNOTE_REF_TAG, start = characterOffset, end = characterOffset).firstOrNull()?.let {
-                        Log.i("TableElementRenderer", "Footnote ref [^${it.item}] clicked in Table (Canvas)")
                         onFootnoteReferenceClick?.invoke(it.item)
                         return
                     }
-                    Log.d("TableElementRenderer", "No link or footnote annotation found at offset $characterOffset")
-                } else {
-                    Log.w("TableElementRenderer", "Tap was within text layout, but getOffsetForPosition returned invalid offset for relative: $textRelativeOffset")
                 }
-            } else {
-                Log.d("TableElementRenderer", "Tap inside cell bounds, but outside text layout area. Relative offset: $textRelativeOffset")
             }
-        } else {
-            Log.d("TableElementRenderer", "Tap outside any cell bounds.")
         }
     }
 

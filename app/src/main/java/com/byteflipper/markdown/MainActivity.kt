@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -85,22 +87,20 @@ fun MainScreen() {
                     )
                 }
             }
-
-            // --- Wrap in a Scrollable Column ---
-            Column(
+            // Use LazyColumn for main content
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp) // Horizontal padding here
-                    .verticalScroll(scrollState) // APPLY SCROLL STATE
-                    .padding(vertical = 16.dp)   // Vertical padding inside for content margins
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
             ) {
-                // Call the appropriate screen based on the selected tab
-                when (selectedTab) {
-                    0 -> DefaultScreen(scrollState)
-                    1 -> CustomStyleScreen(footnotePositions, scrollState)
-                    2 -> CustomRenderersScreen(footnotePositions, scrollState)
+                item {
+                    when (selectedTab) {
+                        0 -> DefaultScreen(scrollState)
+                        1 -> CustomStyleScreen(footnotePositions, scrollState)
+                        2 -> CustomRenderersScreen(footnotePositions, scrollState)
+                    }
                 }
-                Spacer(Modifier.height(50.dp)) // Bottom spacer
+                item { Spacer(Modifier.height(50.dp)) }
             }
         }
     }

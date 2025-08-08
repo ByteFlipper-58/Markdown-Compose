@@ -32,7 +32,6 @@ internal object ImageLinkElementRenderer {
                     interactionSource = interactionSource,
                     indication = null, // No visual indication for clicks on images
                     onClick = {
-                        Log.d("ImageLinkElementRenderer", "ImageLink clicked: Opening URI: ${element.linkUrl}")
                         try {
                             uriHandler.openUri(element.linkUrl)
                         } catch (e: Exception) {

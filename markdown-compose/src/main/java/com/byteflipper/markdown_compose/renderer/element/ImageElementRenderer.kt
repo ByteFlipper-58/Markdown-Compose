@@ -1,6 +1,5 @@
 package com.byteflipper.markdown_compose.renderer.element
 
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,8 +20,6 @@ internal object ImageElementRenderer {
         val finalModifier = Modifier // Start with empty, apply style modifier later
             .then(imageStyle.modifier)
             .clip(imageStyle.shape)
-
-        Log.d("ImageElementRenderer", "Rendering Image: url='${element.url}', modifier='$finalModifier'")
 
         AsyncImage(
             model = element.url,
