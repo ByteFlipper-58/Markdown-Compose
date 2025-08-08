@@ -53,13 +53,13 @@ internal object LinkElementRenderer {
                 annotatedString.getStringAnnotations(tag = URL_TAG, start = offset, end = offset)
                     .firstOrNull()?.let { annotation ->
                         val url = annotation.item
-                        Log.d("LinkElementRenderer", "Link clicked: $url")
+                        // Remove or comment out all Log.d and Log.e calls in this file for production
                         val handler = renderer.onLinkClick ?: { defaultUrl ->
                             try {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(defaultUrl))
                                 context.startActivity(intent)
                             } catch (e: Exception) {
-                                Log.e("LinkElementRenderer", "Failed to open link: $defaultUrl", e)
+                                // Remove or comment out all Log.d and Log.e calls in this file for production
                             }
                         }
                         handler(url)

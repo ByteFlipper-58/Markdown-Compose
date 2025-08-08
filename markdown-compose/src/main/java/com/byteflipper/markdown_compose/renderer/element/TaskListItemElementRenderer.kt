@@ -44,7 +44,6 @@ internal object TaskListItemElementRenderer {
             Checkbox(
                 checked = element.isChecked,
                 onCheckedChange = { newCheckedState ->
-                    Log.d("TaskListItemRenderer", "Checkbox clicked, new state: $newCheckedState")
                     renderer.onTaskCheckedChange?.invoke(element, newCheckedState)
                 },
                 enabled = true, // Assuming always enabled

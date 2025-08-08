@@ -54,7 +54,6 @@ fun MarkdownText(
     onLinkClick: ((url: String) -> Unit)? = null,
     onFootnoteReferenceClick: ((identifier: String) -> Unit)? = { identifier ->
         // Default handler: Scroll towards the bottom using provided scope and state
-        Log.d(TAG, "Default footnote click handler: Scrolling towards bottom for ref [^$identifier]")
         coroutineScope.launch {
             // Scroll to the end where footnotes are located
             scrollState.animateScrollTo(scrollState.maxValue)
@@ -66,13 +65,12 @@ fun MarkdownText(
 ) {
     // --- Parsing ---
     val document = remember(markdown) { MarkdownParser.parse(markdown) }
-    Log.d(TAG, "Parsed markdown into IR document with ${document.children.size} root elements.")
+    // Remove or comment out all Log.d, Log.i, and Log.w calls in this file for production
 
     // --- Renderer Instantiation ---
     // Pass the potentially overridden onFootnoteReferenceClick lambda
     val actualOnFootnoteReferenceClick = onFootnoteReferenceClick ?: { identifier ->
         // Replicate default logic if user passes null explicitly
-        Log.d(TAG, "Default footnote click handler (invoked via null override): Scrolling towards bottom for ref [^$identifier]")
         coroutineScope.launch {
             scrollState.animateScrollTo(scrollState.maxValue)
         }
@@ -96,9 +94,7 @@ fun MarkdownText(
     // Invoke the returned Composable lambda to perform the rendering
     renderFunction()
 
-    Log.d(TAG, "MarkdownText rendering initiated via ComposeMarkdownRenderer.")
-
-    // --- Old Logic Removed ---
+    // Remove or comment out all Log.d, Log.i, and Log.w calls in this file for production
     // The complex Column loop, flushTextGroup, spacing logic, footnote extraction,
     // and direct calls to old renderers are now handled within ComposeMarkdownRenderer.
 }

@@ -63,7 +63,7 @@ internal fun renderChildren( // Changed visibility to internal
                 builder.withStyle(renderer.styleSheet.inlineCodeStyle) { builder.append(child.content) }
             } else {
                 // Block code shouldn't appear inside AnnotatedString rendering for paragraphs etc.
-                 android.util.Log.w("AnnotatedStringRender", "Block CodeElement encountered during inline rendering.")
+                 // android.util.Log.w("AnnotatedStringRender", "Block CodeElement encountered during inline rendering.")
                  builder.append("[Block Code]") // Placeholder
             }
             is LinkElement -> {
@@ -93,11 +93,11 @@ internal fun renderChildren( // Changed visibility to internal
             }
             // Ignore block elements or elements not typically rendered inside AnnotatedString for paragraphs
             is ImageElement, is ImageLinkElement, is LineBreakElement, is ParagraphElement, is HeaderElement, is ListElement, is ListItemElement, is TaskListItemElement, is BlockQuoteElement, is HorizontalRuleElement, is TableElement, is FootnoteDefinitionElement, is DefinitionListElement -> {
-                 android.util.Log.w("AnnotatedStringRender", "Ignoring block element ${child::class.simpleName} during inline rendering.")
+                 // android.util.Log.w("AnnotatedStringRender", "Ignoring block element ${child::class.simpleName} during inline rendering.")
                  /* Usually not rendered directly into AnnotatedString for a paragraph */
             }
             else -> {
-                 android.util.Log.w("AnnotatedStringRender", "Unsupported element ${child::class.simpleName} during inline rendering.")
+                 // android.util.Log.w("AnnotatedStringRender", "Unsupported element ${child::class.simpleName} during inline rendering.")
                  builder.append(" [${child::class.simpleName}] ") // Placeholder for unsupported
             }
         }
